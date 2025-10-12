@@ -10,17 +10,6 @@ import sys
 
 
 def parse_response(response_bytes):
-    """
-    Parse HTTP response into headers and body
-
-    Args:
-        response_bytes: Raw HTTP response
-
-    Returns:
-        Tuple of (status_code, headers_dict, body_bytes)
-    """
-    # Split headers and body
-    # HTTP headers end with \r\n\r\n
     try:
         header_end = response_bytes.find(b'\r\n\r\n')
         if header_end == -1:
@@ -33,10 +22,8 @@ def parse_response(response_bytes):
         lines = headers_section.split('\r\n')
         status_line = lines[0]
 
-        # Extract status code (e.g., "HTTP/1.1 200 OK" -> 200)
         status_code = int(status_line.split()[1])
 
-        # Parse headers into dictionary
         headers = {}
         for line in lines[1:]:
             if ':' in line:
@@ -51,17 +38,7 @@ def parse_response(response_bytes):
 
 
 def make_request(host, port, path):
-    """
-    Make an HTTP GET request
 
-    Args:
-        host: Server hostname or IP
-        port: Server port
-        path: URL path (e.g., /index.html)
-
-    Returns:
-        Raw HTTP response bytes
-    """
     try:
         # Create TCP socket
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -109,41 +86,18 @@ def make_request(host, port, path):
 
 
 def get_content_type(headers):
-    """
-    Get content type from headers
-
-    Args:
-        headers: Dictionary of HTTP headers
-
-    Returns:
-        Content type string or None
-    """
     return headers.get('content-type', '').split(';')[0].strip()
 
 
 def get_filename_from_path(path):
-    """
-    Extract filename from URL path
-
-    Args:
-        path: URL path (e.g., /folder/file.pdf)
-
-    Returns:
-        Filename (e.g., file.pdf)
-    """
-    # Remove trailing slash if present
     path = path.rstrip('/')
 
-    # Get last part of path
     if '/' in path:
         return path.split('/')[-1]
     return path.lstrip('/')
 
 
 def main():
-    """
-    Main function - runs the HTTP client
-    """
     # Check command-line arguments
     if len(sys.argv) != 5:
         print("Usage: python client.py <host> <port> <url_path> <save_directory>")
@@ -156,11 +110,9 @@ def main():
     url_path = sys.argv[3]
     save_dir = sys.argv[4]
 
-    # Ensure path starts with /
     if not url_path.startswith('/'):
         url_path = '/' + url_path
 
-    # Create save directory if it doesn't exist
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         print(f"Created directory: {save_dir}")
@@ -171,7 +123,6 @@ def main():
     if response is None:
         sys.exit(1)
 
-    # Parse response
     status_code, headers, body = parse_response(response)
 
     if status_code is None:
@@ -180,7 +131,6 @@ def main():
 
     print(f"Status: {status_code}")
 
-    # Check status code
     if status_code != 200:
         print(f"Error: Server returned status {status_code}")
         if body:
@@ -190,13 +140,10 @@ def main():
                 pass
         sys.exit(1)
 
-    # Get content type
     content_type = get_content_type(headers)
     print(f"Content-Type: {content_type}")
 
-    # Handle based on content type
     if content_type == 'text/html':
-        # HTML - print to console
         print("\n--- HTML Content ---")
         try:
             print(body.decode('utf-8'))
@@ -218,7 +165,6 @@ def main():
         print(f"Size: {len(body)} bytes")
 
     elif content_type == 'application/pdf':
-        # PDF - save to file
         filename = get_filename_from_path(url_path)
         if not filename or filename == '':
             filename = 'downloaded_file.pdf'

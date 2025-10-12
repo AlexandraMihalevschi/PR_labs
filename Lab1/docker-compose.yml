@@ -1,13 +1,10 @@
 services:
-  # HTTP File Server
   server:
     build: .
     container_name: http-file-server
     ports:
-      - "8080:8080"  # Map port 8080 from container to host
+      - "8080:8080"
     volumes:
-      # Mount local content directory to container
-      # This allows us to add/modify files without rebuilding
       - ./content:/app/content
     command: python server.py /app/content
     networks:
