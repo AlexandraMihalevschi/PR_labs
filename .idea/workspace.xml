@@ -5,22 +5,25 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9d586a34-58fd-46f7-b5bf-539b686f5ce2" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/Network_Programming.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/Dockerfile" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/client.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/content/book1.pdf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/content/book2.pdf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/content/image.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/content/index.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/content/subfolder/another-image.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/content/subfolder/book3.pdf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/docker-compose.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/server.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/404.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/build.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/client_interaction.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/content.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/directory.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/directory_listing.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/friend.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/friend_server.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/html_file.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/image.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/interact_with_client.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/interact_with_friend.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/my_server.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/output.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/pdf.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/start_stop.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/testIP.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Lab1/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/Lab1/README.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -46,32 +49,34 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python.client.executor&quot;: &quot;Run&quot;,
-    &quot;Python.server.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/Lenovo/PycharmProjects/Network_Programming/Lab1/content/subdir&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.client.executor": "Run",
+    "Python.server.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "C:/Users/Lenovo/PycharmProjects/Network_Programming/Lab1/screenshots",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\screenshots" />
+      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content\subfolder" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content\subdir" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\site\subdir" />
-      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\site" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content\subdir" />
+      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\screenshots" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content" />
+      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content\subdir" />
     </key>
   </component>
   <component name="SharedIndexes">
@@ -94,7 +99,7 @@
       <workItem from="1760044865261" duration="1098000" />
       <workItem from="1760098189060" duration="2340000" />
       <workItem from="1760202825595" duration="1007000" />
-      <workItem from="1760297728654" duration="1922000" />
+      <workItem from="1760297728654" duration="12250000" />
     </task>
     <servers />
   </component>
@@ -102,7 +107,7 @@
     <option name="version" value="3" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/Network_Programming$server.coverage" NAME="server Coverage Results" MODIFIED="1759955859875" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Lab1" />
+    <SUITE FILE_PATH="coverage/Network_Programming$server.coverage" NAME="server Coverage Results" MODIFIED="1760309268472" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Lab1" />
     <SUITE FILE_PATH="coverage/Network_Programming$client.coverage" NAME="client Coverage Results" MODIFIED="1759955899203" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Lab1" />
   </component>
 </project>
