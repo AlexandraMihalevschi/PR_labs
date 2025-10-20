@@ -1,7 +1,7 @@
-# Lab 1: HTTP file server with TCP sockets
+# Lab 2: Concurrent HTTP server
 
 **Student Name:** Mihalevschi Alexandra  
-**Date:** [Date]  
+**Date:** 21.10.2025 \
 **Course:** Network Programming
 
 ---
@@ -11,33 +11,26 @@
 ### Project Structure
 
 ```
-Lab1/
+Lab2/
 ├── docker-compose.yml
 ├── Dockerfile
 ├── server.py
+├── test_requests.py
 ├── client.py
 └── content/
-    ├── index.html
-    ├── image1.png
-    ├── image2.png
-    ├── shrek-script.pdf
-    ├── shrek-book1.pdf
-    └── subfolder/
-        ├── shrek_book.pdf
-        └── another-image.png
 ```
 
 **Screenshot:** Directory listing
 
-![Directory Structure](screenshots/directory.png)
+![Directory Structure](screenshots/img.png)
 
 ### File Descriptions
 
-- **server.py**: Main HTTP server implementation
-- **client.py**: HTTP client for downloading files
+- **server.py**: HTTP server with threads, concurrency, rate limiting implementation
 - **docker-compose.yml**: Docker service configuration
 - **Dockerfile**: Docker image definition
 - **content/**: Directory containing files to be served
+- **client.py**: Not so relevant for the lab
 
 ---
 
@@ -45,36 +38,33 @@ Lab1/
 
 ### docker-compose.yml
 
-**Code-snippet:** docker-compose.yml contents
-
 ```yaml
 services:
+  # Multithreaded HTTP File Server
   server:
     build: .
-    container_name: http-file-server
+    container_name: http-server-multithreaded
     ports:
-      - "8080:8080"
+      - "8081:8080"
     volumes:
       - ./content:/app/content
     command: python server.py /app/content
     networks:
-      - pdf-network
+      - lab2-network
     restart: unless-stopped
 
 networks:
-  pdf-network:
+  lab2-network:
     driver: bridge
 ```
 
 **Explanation:**
-- `ports`: Maps container port 8080 to host port 8080
-- `volumes`: Shares local content folder with container
-- `command`: Runs server with /app/content as directory argument
+
+* `ports`: Maps container port 8081 to host port 8080.
+* `volumes`: Shares local content folder with container.
+* `command`: Runs server.py with `/app/content` as the root directory.
 
 ### Dockerfile
-
-**Code-snippet:** Dockerfile contents
-
 
 ```dockerfile
 FROM python:3.11-slim
@@ -83,279 +73,128 @@ COPY server.py /app/
 COPY client.py /app/
 RUN chmod +x server.py client.py
 RUN mkdir -p /app/content
-EXPOSE 8080
+EXPOSE 8081
 CMD ["python", "server.py", "/app/content"]
 ```
-
-**Explanation:**
-- Uses Python 3.11 as base image
-- Sets working directory to /app
-- Copies server and client scripts
-- Exposes port 8080
 
 ---
 
 ## 3. Starting the Container
 
-### Build and Start
 
-**Command:**
-```bash
-cd Lab1
-docker-compose up --build
-```
+**Server output shows:**
 
-**Screenshot:** Container starting
+* Multithreaded server started on `http://0.0.0.0:8081`.
+* Serving files from `/app/content`.
+* Rate limiting: 5 requests per second per IP.
+* Request counter enabled + synchronization.
 
-![Starting Container](screenshots/build.png)
+---
 
-**Screenshot:** Run and stop 
+## 4. Multithreading Test
 
-![Starting Container](screenshots/start_stop.png)
-
-**Output shows:**
-- Building Docker image
-- Creating container
-- Server starting message: "Server started on http://0.0.0.0:8080"
-- "Serving files from: /app/content"
-
-
-## 4. Server Command with Directory Argument
-
-### Command Inside Container
-
-The server runs with the following command:
-```bash
-python server.py /app/content
-```
-
-**Code-snippet:** CMD command, in Dockerfile
-
-```Dockerfile
-CMD ["python", "server.py", "/app/content"]```
-
-### Code Implementation
-
-The server accepts the directory as a command-line argument:
+### 4.1 Test Script: test_requests.py
 
 ```python
-def main():
-    if len(sys.argv) != 2:
-        print("Usage: python server.py <directory>")
+#!/usr/bin/env python3
+import threading
+import requests
+import time
+import sys
+
+def fetch(url):
+    try:
+        r = requests.get(url)
+        print(f"{r.status_code} - {len(r.content)} bytes from {url}")
+    except Exception as e:
+        print(f"Error fetching {url}: {e}")
+
+def run_test(url, num_requests):
+    threads = []
+    start = time.time()
+    for _ in range(num_requests):
+        t = threading.Thread(target=fetch, args=(url,))
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+    end = time.time()
+    print(f"\nTotal time for {num_requests} requests to {url}: {end-start:.2f} seconds\n")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("Usage: python test_requests.py <URL> <NUM_REQUESTS>")
+        print("Example: python test_requests.py http://localhost:8080/index.html 10")
         sys.exit(1)
-    
-    directory = sys.argv[1]  # /app/content
-    
-    if not os.path.isdir(directory):
-        print(f"Error: Directory '{directory}' does not exist!")
-        sys.exit(1)
-    
-    # Server uses this directory to serve files
+
+    URL = sys.argv[1]
+    NUM_REQUESTS = int(sys.argv[2])
+    run_test(URL, NUM_REQUESTS)
 ```
 
----
+### 4.2 Results
 
-## 5. Contents of Served Directory
+| Server Type     | Total Requests | Time (s) | Notes                                                |
+| --------------- | -------------- |----------| ---------------------------------------------------- |
+| Single-threaded | 10             | 1.09     | Each request handled sequentially                    |
+| Multithreaded   | 10             | 0.08     | Requests handled concurrently, ~1s delay per request |
 
-### Files in content/
 
-**Screenshot:** Content directory listing
+**Screenshot:** Counter output 
+![Concurrent Requests](screenshots/img_2.png)
 
-![Content Directory](screenshots/content.png)
+**Screenshot:** Test output (but with delay time.sleep(1))
+![Concurrent Requests](screenshots/img_1.png)
 
-**Files:**
-- `index.html` - Homepage with embedded image
-- `image.png` - Sample image
-- `shrek-script.pdf` - Sample PDF document
-- `shrek_book1.pdf` - Sample PDF document
-- `subfolder/` - Subdirectory with additional files
-  - `shrek_book2.pdf` 
-  - `another-image.png` 
+**Observation:** Multithreading significantly reduces total request time compared to single-threaded server (if not delays added).
 
 ---
 
-## 6. Browser Requests - Four File Types
+## 5. Request Counter Feature
 
-### 6.1 Request 1: 404 - File Not Found
+### 5.1 Naive Counter (Race Condition)
 
-**Screenshot:** Browser showing 404 error
+* Implemented counter without a lock.
+* Added artificial delays to force thread interleaving.
+* Observation: Request counts sometimes skipped or inconsistent.
 
-![404 Error](screenshots/404.png)
+### 5.2 Thread-Safe Counter
 
----
+* Implemented using `threading.Lock()`.
+* Counter now correctly increments for each request.
+* Directory listing shows accurate request counts for files.
 
-### 6.2 Request 2: HTML File with Embedded Image
+**Screenshot:** Results for a lot of requests to lab1 server
+![](screenshots/last2.png)
 
-**Screenshot:** Browser showing HTML page with image
+In the screen above, it is a clear example of how the race condition happen (in simple words, a small simulation what it would happen - one thread is done, another not, in same period of time it shows different results, like sent and connection closed). Screenshot below shows a similar concept. In that part of the code even though the counter showed correct number, the counter of total requests did not refresh yet, and it showed a lower number, even though the requests already are of greater nr.
 
-![HTML Page](screenshots/html_file.png)
-
-
-Browser makes TWO requests:
-1. GET /index.html (HTML file)
-2. GET /image.png (embedded image)
-
----
-
-### 6.3 Request 3: PDF File
-
-**Screenshot:** Browser displaying PDF
-
-![PDF Display](screenshots/pdf.png)
-
-
-**Headers:**
-- Status: 200 OK
-- Content-Type: application/pdf
-- Content-Length: 245760 bytes
+**Screenshot:** Results for a lot of requests for naive approach
+![](screenshots/pr1.png)
 
 ---
 
-### 6.4 Request 4: PNG Image
+## 6. Rate Limiting Feature
 
-**Screenshot:** Browser displaying PNG image
+* Limit: 5 requests per second per IP.
+* Implemented using a timestamp list per client IP with lock protection.
 
-![PNG Display](screenshots/image.png)
+### 6.1 Testing Setup
 
-**Headers:**
-- Status: 200 OK
-- Content-Type: image/png
+1. Friend (or another terminal) spams requests > 5/sec.
+2. Another client sends requests < 5/sec.
 
----
-
-## 7. HTTP Client Implementation and Testing
-
-
-**Command example:**
-```bash
-python client.py localhost 8080 /book1.pdf ./downloads
-```
-
-**Screenshot:** Client interaction
-
-![Client PDF Download](screenshots/client_interaction.png)
-![Client PDF Download](screenshots/interact_with_client.png)
-
-## 8. Directory Listing Feature
-
-
-**URL:** `http://localhost:8080/subfolder/`
-
-**Screenshot:** Generated directory listing page
-
-![Directory Listing](screenshots/directory_listing.png)
-
-**Features:**
-- Title showing current path
-- Link to parent directory
-- List of files with clickable links
-- Folders marked with trailing slash
-
-
-**Command:**
-```bash
-python client.py localhost 8080 /subfolder/ ./downloads
-```
 
 
 ---
 
-## 9. Network Testing - Friend's Server
+## 7. Conclusion
 
-### 9.1 Setup
-
-Since the lab is done with no friends around, I decided to "simulate" the friend. Thus, i created a dummy project, on 8081 port, and used it to test what is needed.
-
-**Created two server instances:**
-- My Server: `localhost:8080` (Lab1 folder)
-- Friend's Server: `localhost:8081` (Friend-Server folder)
+* Multithreaded server handles multiple requests concurrently, improving throughput.
+* Request counter accurately tracks requests when using thread-safe locking.
+* Rate limiting effectively restricts client requests per IP in a thread-safe manner.
+* Overall, the lab demonstrates concurrency, synchronization, and network-safe rate limiting.
 
 
-**Modified docker-compose.yml for Friend's server:**
-```yaml
-ports:
-  - "8081:8080"  
-```
-
----
-
-### 9.2 Running Both Servers
-
-**Screenshot:** Terminal 1 - My server
-
-![My Server Terminal](screenshots/my_server.png)
-
-**Screenshot:** Terminal 2 - Friend's server
-
-![Friend Server Terminal](screenshots/friend_server.png)
-
-
-```
-CONTAINER ID   IMAGE                  COMMAND                  CREATED         STATUS         PORTS                                         NAMES
-4436da805ea4   friend_server-server   "python server.py /a…"   4 minutes ago   Up 4 minutes   0.0.0.0:8081->8080/tcp, [::]:8081->8080/tcp   friend-server
-d0cbd8a759bd   lab1-server            "python server.py /a…"   7 minutes ago   Up 7 minutes   0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp   http-file-server
-```
-
----
-
-### 9.3 Network Information
-
-Now, we need to get the ip of the friend. In this case, I will call my own IP, since I am to part of the LAN.
-
-**Command:**
-```bash
-ipconfig     
-```
-
-Then test the existance of the project on local net.
-
-**Screenshot:** Curl with IP
-
-![Network Config](screenshots/testIP.png)
-
-
-**Network Setup:**
-```
-My Computer (192.168.1.XXX)
-├── Container 1: My Server (localhost:8080)
-└── Container 2: Friend's Server (localhost:8081)
-```
-
----
-
-### 9.4 Browsing Friend's Server in Browser
-
-**URL:** `http://localhost:8081`
-
-**Screenshot:** Friend's homepage
-
-![Friend Homepage](screenshots/friend.png)
-
-
----
-
-### 9.5 Using Client to Download from Friend's Server
-
-**Command:**
-```bash
-python client.py localhost 8081 /friend-book1.pdf ./downloads
-```
-
-**Screenshot:** Client downloading from friend
-
-![Client Friend Download](screenshots/interact_with_friend.png)
-
-**Screenshot:** Friend's file in downloads folder
-
-![Friend File Downloaded](screenshots/output.png)
-
-
-### Supported MIME Types
-
-| Extension | MIME Type          |
-|-----------|-------------------|
-| .html     | text/html         |
-| .pdf      | application/pdf   |
-| .png      | image/png         |
-
----

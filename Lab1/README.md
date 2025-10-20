@@ -1,7 +1,6 @@
 # Lab 1: HTTP file server with TCP sockets
 
-**Student Name:** Mihalevschi Alexandra  
-**Date:** [Date]  
+**Student Name:** Mihalevschi Alexandra   
 **Course:** Network Programming
 
 ---
