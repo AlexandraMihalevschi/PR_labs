@@ -5,25 +5,19 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9d586a34-58fd-46f7-b5bf-539b686f5ce2" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/404.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/build.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/client_interaction.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/content.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/directory.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/directory_listing.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/friend.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/friend_server.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/html_file.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/image.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/interact_with_client.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/interact_with_friend.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/my_server.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/output.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/pdf.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/start_stop.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab1/screenshots/testIP.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/Dockerfile" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/client.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/content/image1.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/content/image2.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/content/index.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/content/shrek-script.pdf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/content/shrek_book1.pdf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/content/subfolder/another-image.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/content/subfolder/shrek_book2.pdf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/docker-compose.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/server.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Lab1/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/Lab1/README.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -56,7 +50,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "main",
-    "last_opened_file_path": "C:/Users/Lenovo/PycharmProjects/Network_Programming/Lab1/screenshots",
+    "last_opened_file_path": "C:/Users/Lenovo/PycharmProjects/Network_Programming/Lab2",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -67,13 +61,14 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab2" />
+      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\screenshots" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content\subfolder" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content\subdir" />
-      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content" />
-      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\site\subdir" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\screenshots" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content" />
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab1\content\subdir" />
@@ -99,7 +94,9 @@
       <workItem from="1760044865261" duration="1098000" />
       <workItem from="1760098189060" duration="2340000" />
       <workItem from="1760202825595" duration="1007000" />
-      <workItem from="1760297728654" duration="12250000" />
+      <workItem from="1760297728654" duration="12602000" />
+      <workItem from="1760555663083" duration="15000" />
+      <workItem from="1760973251294" duration="9375000" />
     </task>
     <servers />
   </component>

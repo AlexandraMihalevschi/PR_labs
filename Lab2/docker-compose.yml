@@ -1,0 +1,17 @@
+services:
+  # Multithreaded HTTP File Server
+  server:
+    build: .
+    container_name: http-server-multithreaded
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./content:/app/content
+    command: python server.py /app/content
+    networks:
+      - lab2-network
+    restart: unless-stopped
+
+networks:
+  lab2-network:
+    driver: bridge
