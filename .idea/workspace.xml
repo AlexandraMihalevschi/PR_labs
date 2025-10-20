@@ -5,19 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9d586a34-58fd-46f7-b5bf-539b686f5ce2" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/Lab2/Dockerfile" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/client.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/content/image1.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/content/image2.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/content/index.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/content/shrek-script.pdf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/content/shrek_book1.pdf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/content/subfolder/another-image.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/content/subfolder/shrek_book2.pdf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/docker-compose.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/server.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/test_requests.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Lab2/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/Lab2/server.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -96,7 +86,7 @@
       <workItem from="1760202825595" duration="1007000" />
       <workItem from="1760297728654" duration="12602000" />
       <workItem from="1760555663083" duration="15000" />
-      <workItem from="1760973251294" duration="9375000" />
+      <workItem from="1760973251294" duration="13652000" />
     </task>
     <servers />
   </component>
