@@ -166,6 +166,12 @@ if __name__ == "__main__":
 * Counter now correctly increments for each request.
 * Directory listing shows accurate request counts for files.
 
+To test it, needed to run the code below, and then see the output. 😋
+
+```bash
+ python test_requests.py http://10.89.133.3:8081/image1.png 10
+```
+
 **Screenshot:** Results for a lot of requests to lab1 server
 ![](screenshots/last2.png)
 
