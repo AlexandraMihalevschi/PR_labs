@@ -184,17 +184,22 @@ In the screen above, it is a clear example of how the race condition happen (in 
 ### 6.1 Testing Setup
 
 1. Friend (or another terminal) spams requests > 5/sec.
-2. Another client sends requests < 5/sec.
+2. Another client (in this case me), spams requests as well
 
+**Screenshot:** Results before anything
+![](screenshots/before.png)
 
+Now, in the same time, I and my friend run the script for accessing the same image (image1.png) for 50 times. 
+
+Thus, here is the requests of my friend:
+![](screenshots/friend2.jpg)
+If to analyze, the code 429 is for too many requests, thus limiting the access for that concrete IP. We also can see response code 200 - for successful access. More than 5 per second it cannot send.
+
+Here is my request run situation:
+![](screenshots/my_requests.png)
+Same thing here. 200 for successful, 429 for too many requests. My code did run a bit faster, thus the 200 code shows a bit less "denser", if we could say so. 
 
 ---
 
-## 7. Conclusion
-
-* Multithreaded server handles multiple requests concurrently, improving throughput.
-* Request counter accurately tracks requests when using thread-safe locking.
-* Rate limiting effectively restricts client requests per IP in a thread-safe manner.
-* Overall, the lab demonstrates concurrency, synchronization, and network-safe rate limiting.
 
 

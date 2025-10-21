@@ -5,18 +5,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9d586a34-58fd-46f7-b5bf-539b686f5ce2" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/img.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/img_1.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/img_2.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/last1.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/last2.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/pr1.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/pr2.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/test1.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/before.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/friend1.jpg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/friend2.jpg" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Lab2/screenshots/my_requests.png" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Lab1/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/Lab1/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Lab2/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/Lab2/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Lab2/server.py" beforeDir="false" afterPath="$PROJECT_DIR$/Lab2/server.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -42,22 +36,22 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python.client.executor": "Run",
-    "Python.server.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "C:/Users/Lenovo/PycharmProjects/Network_Programming/Lab2/screenshots",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.client.executor&quot;: &quot;Run&quot;,
+    &quot;Python.server.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/Lenovo/PycharmProjects/Network_Programming/Lab2/screenshots&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\Lenovo\PycharmProjects\Network_Programming\Lab2\screenshots" />
@@ -95,7 +89,9 @@
       <workItem from="1760202825595" duration="1007000" />
       <workItem from="1760297728654" duration="12602000" />
       <workItem from="1760555663083" duration="15000" />
-      <workItem from="1760973251294" duration="19736000" />
+      <workItem from="1760973251294" duration="21605000" />
+      <workItem from="1761056512891" duration="2465000" />
+      <workItem from="1761062384253" duration="4533000" />
     </task>
     <servers />
   </component>
