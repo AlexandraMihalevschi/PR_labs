@@ -3,3 +3,15 @@
 /package-lock.json
 /dist/
 /coverage/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
