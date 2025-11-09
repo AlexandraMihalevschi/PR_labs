@@ -49,7 +49,7 @@ async def flip(board: Board, player_id: str, row: int, column: int) -> str:
     Raises:
         an error if the flip operation fails as described in the ps4 handout.
     """
-    board.flip_card(player_id, row, column)
+    await board.flip_card(player_id, row, column)
     return board.get_board_state(player_id)
 
 
@@ -79,8 +79,8 @@ async def map_cards(board: Board, player_id: str, f: Callable[[str], Awaitable[s
         the state of the board after the replacement from the perspective of player_id,
         in the format described in the ps4 handout
     """
-    raise NotImplementedError('map function not implemented')
-    # implement with glue code only, at most three lines
+    await board.map_cards(player_id, f)
+    return board.get_board_state(player_id)
 
 
 async def watch(board: Board, player_id: str) -> str:
@@ -96,5 +96,5 @@ async def watch(board: Board, player_id: str) -> str:
         the updated state of the board from the perspective of player_id, in the 
         format described in the ps4 handout
     """
-    raise NotImplementedError('watch function not implemented')
-    # implement with glue code only, at most three lines
+    await board.watch_for_change()
+    return board.get_board_state(player_id)

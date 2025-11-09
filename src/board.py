@@ -2,14 +2,15 @@
 Redistribution of original or derived work requires permission of course staff.
 """
 
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Set, Callable, Awaitable
 import re
 import asyncio
+from collections import defaultdict
 
 
 class Board:
     """
-    A mutable Memory Scramble game board.
+    A mutable Memory Scramble game board with asynchronous support for concurrent players.
     
     A Board represents a grid of cards that players can flip over to find matching pairs.
     Cards can be face up or face down, controlled by players, or removed from the board.
@@ -22,6 +23,9 @@ class Board:
     - _controllers: 2D list of player IDs (strings) or None, tracks who controls each card
     - _player_cards: maps player_id to list of (row, col) tuples of cards they control
     - _previous_moves: maps player_id to (cards_list, matched) tuple for cleanup rules
+    - _waiting_players: maps (row, col) to list of asyncio.Event for players waiting on that card
+    - _lock: asyncio.Lock for thread-safety
+    - _map_locks: maps card value to asyncio.Lock for pairwise consistency in map operations
     
     Abstraction function:
     AF(self) = a Memory Scramble board with:
@@ -33,6 +37,7 @@ class Board:
       - _controllers[r][c] indicates which player controls it (None if uncontrolled)
     - _player_cards[player_id] = list of positions controlled by that player
     - _previous_moves[player_id] = (previous cards, whether they matched) for cleanup
+    - _waiting_players[(r, c)] = list of events for players waiting to control card at (r, c)
     
     Representation invariant:
     - _rows > 0 and _columns > 0
@@ -55,12 +60,28 @@ class Board:
         """
         Create a new board with the given dimensions and cards.
         
+        Preconditions:
+            - rows > 0
+            - columns > 0
+            - len(cards) == rows
+            - For all i in [0, rows): len(cards[i]) == columns
+            - All card values are non-empty strings of non-whitespace characters
+        
         Args:
             rows: number of rows (must be > 0)
             columns: number of columns (must be > 0)
             cards: 2D list of card values, must be rows×columns
+        
         Raises:
             ValueError if dimensions are invalid or cards don't match dimensions
+        
+        Postconditions:
+            - self._rows == rows
+            - self._columns == columns
+            - self._cards contains copies of the input cards (no rep exposure)
+            - All cards start face down
+            - No cards are controlled
+            - self.check_rep() passes
         """
         if rows <= 0 or columns <= 0:
             raise ValueError('Board dimensions must be positive')
@@ -83,10 +104,35 @@ class Board:
         # Track previous moves for cleanup (rule 3-A/B)
         self._previous_moves: Dict[str, Optional[Tuple[List[Tuple[int, int]], bool]]] = {}
         
+        # Async support for Problem 3: waiting players
+        self._waiting_players: Dict[Tuple[int, int], List[asyncio.Event]] = defaultdict(list)
+        # Lock for thread-safety
+        self._lock = asyncio.Lock()
+        # Map locks for Problem 4: pairwise consistency (lock per card value)
+        self._map_locks: Dict[str, asyncio.Lock] = {}
+        # Track active map operations
+        self._active_maps: Set[int] = set()
+        self._map_counter = 0
+        
+        # Problem 5: Change watchers - list of events for players watching for changes
+        self._change_watchers: List[asyncio.Event] = []
+        
         self.check_rep()
     
     def check_rep(self) -> None:
-        """Check representation invariant."""
+        """
+        Check representation invariant.
+        
+        Verifies that all representation invariants hold:
+        - Dimensions are positive
+        - All arrays have correct sizes
+        - Removed cards are face down and uncontrolled
+        - Controlled cards are face up
+        - _player_cards is consistent with _controllers
+        
+        Raises:
+            AssertionError if any invariant is violated
+        """
         assert self._rows > 0 and self._columns > 0
         assert len(self._cards) == self._rows
         assert len(self._face_up) == self._rows
@@ -121,16 +167,29 @@ class Board:
                     assert (r, c) in self._player_cards.get(player_id, [])
     
     def get_rows(self) -> int:
-        """Returns the number of rows in the board."""
+        """
+        Returns the number of rows in the board.
+        
+        Returns:
+            number of rows (always > 0)
+        """
         return self._rows
     
     def get_columns(self) -> int:
-        """Returns the number of columns in the board."""
+        """
+        Returns the number of columns in the board.
+        
+        Returns:
+            number of columns (always > 0)
+        """
         return self._columns
     
     def get_board_state(self, player_id: str) -> str:
         """
         Returns the board state from the perspective of the given player.
+        
+        Preconditions:
+            - player_id is a nonempty string
         
         Format:
         ROWxCOLUMN
@@ -139,8 +198,15 @@ class Board:
         
         Args:
             player_id: ID of the player viewing the board
+        
         Returns:
-            string representation of the board state
+            string representation of the board state in the format described above.
+            The string ends with a newline character.
+        
+        Postconditions:
+            - Return value is a valid board state string
+            - All cards are represented exactly once
+            - "my CARD" appears only for cards controlled by player_id
         """
         lines = [f'{self._rows}x{self._columns}']
         
@@ -157,19 +223,18 @@ class Board:
         
         return '\n'.join(lines) + '\n'
     
-    def flip_card(self, player_id: str, row: int, column: int) -> None:
+    async def flip_card(self, player_id: str, row: int, column: int) -> None:
         """
         Tries to flip over a card, following the Memory Scramble gameplay rules.
         
-        This is the synchronous version for Problems 1 & 2.
-        For Problem 3, this will be made async to handle waiting.
+        This is the async version for Problem 3, supporting waiting for cards controlled by others.
         
         Rules:
         First card (player controls 0 cards):
           1-A: Empty space → fails (raises ValueError)
           1-B: Face down → turns face up, player controls it
           1-C: Face up, uncontrolled → player controls it
-          1-D: Face up, controlled by another → waits (not implemented in sync version)
+          1-D: Face up, controlled by another → waits until card becomes available
         
         Second card (player controls 1 card):
           2-A: Empty space → fails, relinquish first card
@@ -193,141 +258,258 @@ class Board:
         if not (0 <= row < self._rows and 0 <= column < self._columns):
             raise IndexError(f'Position ({row}, {column}) is out of bounds')
         
-        controlled_cards = self._player_cards.get(player_id, [])
-        num_controlled = len(controlled_cards)
-        
-        # Cleanup previous move (rule 3-A/B)
-        # Cleanup happens when starting a new turn (0 controlled cards) OR after a match (2 controlled cards)
-        if player_id in self._previous_moves and self._previous_moves[player_id] is not None:
-            prev_cards, prev_matched = self._previous_moves[player_id]
+        # Retry loop for waiting (Rule 1-D)
+        while True:
+            event_to_wait = None
+            async with self._lock:
+                controlled_cards = self._player_cards.get(player_id, [])
+                num_controlled = len(controlled_cards)
+                
+                # Cleanup previous move (rule 3-A/B)
+                if player_id in self._previous_moves and self._previous_moves[player_id] is not None:
+                    prev_cards, prev_matched = self._previous_moves[player_id]
+                    
+                    if prev_matched:
+                        # Rule 3-A: Remove matched cards
+                        for r, c in prev_cards:
+                            if (0 <= r < self._rows and 0 <= c < self._columns and 
+                                self._cards[r][c] is not None):
+                                # Remove card and clear control
+                                self._cards[r][c] = None
+                                self._face_up[r][c] = False
+                                self._controllers[r][c] = None
+                                # Remove from player's controlled cards
+                                if player_id in self._player_cards and (r, c) in self._player_cards[player_id]:
+                                    self._player_cards[player_id].remove((r, c))
+                                # Notify waiting players (card is now gone, they should fail)
+                                self._notify_waiting_players((r, c))
+                                # Notify change watchers (card removed)
+                                self._notify_change_watchers()
+                        # Clean up empty player card lists
+                        if player_id in self._player_cards and not self._player_cards[player_id]:
+                            del self._player_cards[player_id]
+                    else:
+                        # Rule 3-B: Turn face down if uncontrolled
+                        for r, c in prev_cards:
+                            if (0 <= r < self._rows and 0 <= c < self._columns and
+                                self._cards[r][c] is not None and
+                                self._face_up[r][c] and
+                                self._controllers[r][c] is None):
+                                # Card is on board, face up, and uncontrolled - turn it face down
+                                self._face_up[r][c] = False
+                                # Notify waiting players (card state changed)
+                                self._notify_waiting_players((r, c))
+                                # Notify change watchers (card turned face down)
+                                self._notify_change_watchers()
+                    
+                    # Clear previous move
+                    self._previous_moves[player_id] = None
+                    
+                    # Update controlled cards list after cleanup
+                    controlled_cards = self._player_cards.get(player_id, [])
+                    num_controlled = len(controlled_cards)
+                
+                # First card (player controls 0 cards after cleanup, or had 0 to begin with)
+                if num_controlled == 0:
+                    # Rule 1-A: Empty space
+                    if self._cards[row][column] is None:
+                        raise ValueError(f'No card at position ({row}, {column})')
+                    
+                    controller = self._controllers[row][column]
+                    
+                    # Rule 1-D: Controlled by another player - wait
+                    if controller is not None and controller != player_id:
+                        # Create event and add to waiting list
+                        wait_event = asyncio.Event()
+                        self._waiting_players[(row, column)].append(wait_event)
+                        event_to_wait = wait_event
+                    else:
+                        # Can proceed with flip
+                        # Rule 1-B: Face down → turn face up and control
+                        if not self._face_up[row][column]:
+                            self._face_up[row][column] = True
+                            self._controllers[row][column] = player_id
+                            if player_id not in self._player_cards:
+                                self._player_cards[player_id] = []
+                            self._player_cards[player_id].append((row, column))
+                            # Notify waiting players and change watchers
+                            self._notify_waiting_players((row, column))
+                            self._notify_change_watchers()
+                        # Rule 1-C: Face up, uncontrolled → control it
+                        elif controller is None:
+                            self._controllers[row][column] = player_id
+                            if player_id not in self._player_cards:
+                                self._player_cards[player_id] = []
+                            self._player_cards[player_id].append((row, column))
+                            # Notify waiting players (no change watcher - card already face up)
+                            self._notify_waiting_players((row, column))
+                        
+                        # Clear previous move (starting fresh)
+                        self._previous_moves[player_id] = None
+                        self.check_rep()
+                        return  # Successfully flipped
+                
+                # Second card (player controls 1 card)
+                elif num_controlled == 1:
+                    first_card_pos = controlled_cards[0]
+                    first_row, first_col = first_card_pos
+                    
+                    # Rule 2-A: Empty space
+                    if self._cards[row][column] is None:
+                        # Relinquish control of first card
+                        self._relinquish_control(player_id, first_row, first_col)
+                        self._notify_waiting_players((first_row, first_col))
+                        raise ValueError(f'No card at position ({row}, {column})')
+                    
+                    controller = self._controllers[row][column]
+                    
+                    # Rule 2-B: Controlled by any player (including self)
+                    # Check if card is face up and controlled
+                    if self._face_up[row][column] and controller is not None:
+                        # Relinquish control of first card (but it remains face up)
+                        self._relinquish_control(player_id, first_row, first_col)
+                        self._notify_waiting_players((first_row, first_col))
+                        raise ValueError(f'Card at ({row}, {column}) is controlled by a player')
+                    
+                    # Rule 2-C: Face down → turn face up (if not already face up)
+                    if not self._face_up[row][column]:
+                        self._face_up[row][column] = True
+                        # Notify waiting players and change watchers
+                        self._notify_waiting_players((row, column))
+                        self._notify_change_watchers()
+                    
+                    first_card_value = self._cards[first_row][first_col]
+                    second_card_value = self._cards[row][column]
+                    
+                    # Rule 2-D: Cards match
+                    if first_card_value == second_card_value:
+                        # Player keeps control of both cards
+                        self._controllers[row][column] = player_id
+                        self._player_cards[player_id].append((row, column))
+                        # Record successful match for cleanup
+                        self._previous_moves[player_id] = ([(first_row, first_col), (row, column)], True)
+                        # Notify waiting players
+                        self._notify_waiting_players((row, column))
+                    
+                    # Rule 2-E: Cards don't match
+                    else:
+                        # Relinquish control of both cards
+                        self._relinquish_control(player_id, first_row, first_col)
+                        self._relinquish_control(player_id, row, column)
+                        # Record unsuccessful match for cleanup
+                        self._previous_moves[player_id] = ([(first_row, first_col), (row, column)], False)
+                        # Notify waiting players
+                        self._notify_waiting_players((first_row, first_col))
+                        self._notify_waiting_players((row, column))
+                    
+                    self.check_rep()
+                    return  # Successfully flipped
+                
+                else:
+                    # This shouldn't happen - player should have 0, 1, or 2 controlled cards
+                    raise ValueError(f'Invalid state: Player {player_id} controls {num_controlled} cards')
             
-            if prev_matched:
-                # Rule 3-A: Remove matched cards
-                for r, c in prev_cards:
-                    if (0 <= r < self._rows and 0 <= c < self._columns and 
-                        self._cards[r][c] is not None):
-                        # Remove card and clear control
-                        self._cards[r][c] = None
-                        self._face_up[r][c] = False
-                        self._controllers[r][c] = None
-                        # Remove from player's controlled cards (we know player controls these)
-                        if player_id in self._player_cards and (r, c) in self._player_cards[player_id]:
-                            self._player_cards[player_id].remove((r, c))
-                # Clean up empty player card lists
-                if player_id in self._player_cards and not self._player_cards[player_id]:
-                    del self._player_cards[player_id]
+            # If we need to wait, do so outside the lock
+            if event_to_wait is not None:
+                await event_to_wait.wait()
+                # Loop back to try again
             else:
-                # Rule 3-B: Turn face down if uncontrolled by any player
-                # For each card that was part of the previous move:
-                # - If it's still on the board
-                # - And currently face up
-                # - And not controlled by any player (including the original player who relinquished control)
-                # Then turn it face down
-                for r, c in prev_cards:
-                    if (0 <= r < self._rows and 0 <= c < self._columns and
-                        self._cards[r][c] is not None and
-                        self._face_up[r][c] and
-                        self._controllers[r][c] is None):
-                        # Card is on board, face up, and uncontrolled - turn it face down
-                        self._face_up[r][c] = False
-            
-            # Clear previous move
-            self._previous_moves[player_id] = None
-            
-            # Update controlled cards list after cleanup
-            controlled_cards = self._player_cards.get(player_id, [])
-            num_controlled = len(controlled_cards)
+                break
+    
+    def _notify_waiting_players(self, position: Tuple[int, int]) -> None:
+        """
+        Notify all players waiting on a card at the given position.
         
-        # First card (player controls 0 cards after cleanup, or had 0 to begin with)
-        if num_controlled == 0:
-            # Rule 1-A: Empty space
-            if self._cards[row][column] is None:
-                raise ValueError(f'No card at position ({row}, {column})')
-            
-            controller = self._controllers[row][column]
-            
-            # Rule 1-D: Controlled by another player
-            # In sync version, we'll raise an error (waiting comes in Problem 3)
-            if controller is not None and controller != player_id:
-                raise ValueError(f'Card at ({row}, {column}) is controlled by another player')
-            
-            # Rule 1-B: Face down → turn face up and control
-            if not self._face_up[row][column]:
-                self._face_up[row][column] = True
-                self._controllers[row][column] = player_id
-                if player_id not in self._player_cards:
-                    self._player_cards[player_id] = []
-                self._player_cards[player_id].append((row, column))
-            # Rule 1-C: Face up, uncontrolled → control it
-            else:
-                # Card is face up and controller is None (uncontrolled)
-                assert controller is None, "Should have been handled by rule 1-D"
-                self._controllers[row][column] = player_id
-                if player_id not in self._player_cards:
-                    self._player_cards[player_id] = []
-                self._player_cards[player_id].append((row, column))
-            
-            # Clear previous move (starting fresh)
-            self._previous_moves[player_id] = None
+        Preconditions:
+            - Must be called while holding self._lock
+            - position is a valid (row, column) tuple
         
-        # Second card (player controls 1 card)
-        elif num_controlled == 1:
-            first_card_pos = controlled_cards[0]
-            first_row, first_col = first_card_pos
-            
-            # Rule 2-A: Empty space
-            if self._cards[row][column] is None:
-                # Relinquish control of first card
-                self._relinquish_control(player_id, first_row, first_col)
-                raise ValueError(f'No card at position ({row}, {column})')
-            
-            controller = self._controllers[row][column]
-            
-            # Rule 2-B: Controlled by any player (including self)
-            # Check if card is face up and controlled
-            if self._face_up[row][column] and controller is not None:
-                # Relinquish control of first card (but it remains face up)
-                self._relinquish_control(player_id, first_row, first_col)
-                raise ValueError(f'Card at ({row}, {column}) is controlled by a player')
-            
-            # Rule 2-C: Face down → turn face up (if not already face up)
-            if not self._face_up[row][column]:
-                self._face_up[row][column] = True
-            
-            first_card_value = self._cards[first_row][first_col]
-            second_card_value = self._cards[row][column]
-            
-            # Rule 2-D: Cards match
-            if first_card_value == second_card_value:
-                # Player keeps control of both cards
-                self._controllers[row][column] = player_id
-                self._player_cards[player_id].append((row, column))
-                # Record successful match for cleanup
-                self._previous_moves[player_id] = ([(first_row, first_col), (row, column)], True)
-            
-            # Rule 2-E: Cards don't match
-            else:
-                # Relinquish control of both cards
-                self._relinquish_control(player_id, first_row, first_col)
-                self._relinquish_control(player_id, row, column)
-                # Record unsuccessful match for cleanup
-                self._previous_moves[player_id] = ([(first_row, first_col), (row, column)], False)
+        Args:
+            position: (row, column) tuple
         
-        else:
-            # This shouldn't happen - player should have 0, 1, or 2 controlled cards
-            raise ValueError(f'Invalid state: Player {player_id} controls {num_controlled} cards')
+        Postconditions:
+            - All events in _waiting_players[position] are set
+            - _waiting_players[position] is cleared
+        """
+        if position in self._waiting_players:
+            events = self._waiting_players[position]
+            # Set all events to notify waiting players
+            for event in events:
+                event.set()
+            # Clear the list (players will create new events if they need to wait again)
+            self._waiting_players[position].clear()
+    
+    def _notify_change_watchers(self) -> None:
+        """
+        Notify all players watching for board changes.
         
-        self.check_rep()
+        Preconditions:
+            - Must be called while holding self._lock
+            - A board change has just occurred (card flipped, removed, or value changed)
+        
+        Postconditions:
+            - All events in _change_watchers are set
+            - _change_watchers is cleared
+        """
+        # Set all events to notify watchers
+        for event in self._change_watchers:
+            event.set()
+        # Clear the list (watchers will create new events if they want to watch again)
+        self._change_watchers.clear()
+    
+    async def watch_for_change(self) -> None:
+        """
+        Wait for the next board change.
+        
+        A change is defined as:
+        - Cards turning face up or face down
+        - Cards being removed from the board
+        - Cards changing from one string to a different string
+        
+        Changes that do NOT count:
+        - Taking control or relinquishing control without changing face up/down state
+        - Failed operations (e.g., trying to flip an empty space)
+        
+        Preconditions:
+            - None (can be called at any time)
+        
+        Returns:
+            None (just waits until a change occurs)
+        
+        Postconditions:
+            - A board change has occurred (card flipped, removed, or value changed)
+            - The method returns after the change is complete
+        """
+        # Create an event for this watcher
+        watch_event = asyncio.Event()
+        
+        async with self._lock:
+            # Add to watchers list
+            self._change_watchers.append(watch_event)
+        
+        # Wait for notification (outside the lock)
+        await watch_event.wait()
+        # Event was set, meaning a change occurred
     
     def _relinquish_control(self, player_id: str, row: int, column: int) -> None:
         """
         Helper method to remove player's control of a card.
         The card remains face up.
         
+        Preconditions:
+            - 0 <= row < self._rows
+            - 0 <= column < self._columns
+            - Must be called while holding self._lock
+        
         Args:
             player_id: ID of the player
             row: row index
             column: column index
+        
+        Postconditions:
+            - If the card was controlled by player_id, it is no longer controlled
+            - The card remains face up
+            - _player_cards[player_id] no longer contains (row, column)
         """
         if self._controllers[row][column] == player_id:
             self._controllers[row][column] = None
@@ -338,8 +520,89 @@ class Board:
                 if not self._player_cards[player_id]:
                     del self._player_cards[player_id]
     
+    async def map_cards(self, player_id: str, f: Callable[[str], Awaitable[str]]) -> None:
+        """
+        Modifies board by replacing every card with f(card), maintaining pairwise consistency.
+        
+        This operation can interleave with other operations. If two cards match at the start,
+        they will continue to match throughout the operation (pairwise consistency).
+        
+        The implementation ensures that all cards with the same value are replaced atomically,
+        so matching cards remain matching even if the map operation interleaves with other operations.
+        
+        Preconditions:
+            - f is a mathematical function (same input always produces same output)
+            - f(card) returns a valid card string for any card on the board
+        
+        Args:
+            player_id: ID of the player applying the map (for consistency, not used in logic)
+            f: async function from cards to cards
+        
+        Postconditions:
+            - All cards with value v are replaced with f(v)
+            - Cards with the same original value still match after transformation
+            - Face up/down and control states are unchanged
+            - Change watchers are notified if card values actually changed
+        """
+        # First, collect all unique card values and their positions while holding the lock
+        card_value_positions: Dict[str, List[Tuple[int, int]]] = {}
+        
+        async with self._lock:
+            # Collect all card values and their positions
+            for r in range(self._rows):
+                for c in range(self._columns):
+                    if self._cards[r][c] is not None:
+                        card_value = self._cards[r][c]
+                        if card_value not in card_value_positions:
+                            card_value_positions[card_value] = []
+                        card_value_positions[card_value].append((r, c))
+        
+        # Process each unique card value (ensures pairwise consistency)
+        # Cards with the same value are processed together atomically
+        for card_value, positions in card_value_positions.items():
+            # Get or create lock for this card value
+            if card_value not in self._map_locks:
+                async with self._lock:
+                    if card_value not in self._map_locks:
+                        self._map_locks[card_value] = asyncio.Lock()
+            
+            # Lock by card value to ensure matching cards are updated atomically
+            async with self._map_locks[card_value]:
+                # Apply transformation to get new value (outside board lock for concurrency)
+                new_value = await f(card_value)
+                
+                # Update all cards with this value atomically
+                cards_changed = False
+                async with self._lock:
+                    # Re-check positions (cards might have been removed or changed)
+                    for r, c in positions:
+                        if (0 <= r < self._rows and 0 <= c < self._columns and
+                            self._cards[r][c] == card_value):
+                            # Card still has the original value, update it
+                            self._cards[r][c] = new_value
+                            cards_changed = True
+                    
+                    # Ensure lock exists for new value (if different)
+                    if new_value != card_value:
+                        if new_value not in self._map_locks:
+                            self._map_locks[new_value] = asyncio.Lock()
+                    
+                    # Notify change watchers if cards were actually changed
+                    if cards_changed and new_value != card_value:
+                        self._notify_change_watchers()
+        
+        # Final rep check (outside all locks for efficiency)
+        async with self._lock:
+            self.check_rep()
+    
     def __str__(self) -> str:
-        """Returns a string representation of the board for debugging."""
+        """
+        Returns a string representation of the board for debugging.
+        
+        Returns:
+            A human-readable string representation of the board state.
+            Format: '---' for empty, '???' for face down, '[CARD]' for controlled, ' CARD ' for face up uncontrolled.
+        """
         lines = []
         for r in range(self._rows):
             row_str = []
@@ -364,12 +627,27 @@ class Board:
         
         PS4 instructions: the specification of this method may not be changed.
         
+        Preconditions:
+            - filename is a valid path to a board file
+            - The file exists and is readable
+            - The file follows the BOARD_FILE grammar specified in the problem set
+        
         Args:
             filename: path to game board file
+        
         Returns:
             a new board with the size and cards from the file
+        
         Raises:
             ValueError if the file cannot be read or is not a valid game board
+            FileNotFoundError if the file does not exist (wrapped in ValueError)
+            IOError if there is an error reading the file (wrapped in ValueError)
+        
+        Postconditions:
+            - Returned board has dimensions and cards as specified in the file
+            - All cards start face down
+            - No cards are controlled
+            - board.check_rep() passes
         """
         try:
             # Read file asynchronously
