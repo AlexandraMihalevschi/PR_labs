@@ -206,7 +206,7 @@ def main():
 
     try:
         while True:
-            client_socket, client_address = server_socket.accept()
+            client_socket, client_address = server_socket.cd ()
             print(f"\nConnection from {client_address}")
 
             handle_request(client_socket, directory)
