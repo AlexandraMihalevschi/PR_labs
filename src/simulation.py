@@ -11,6 +11,7 @@ async def simulation_main():
     """
     Simulate a multi-player Memory Scramble game.
     
+    Requirements: 4 players, timeouts between 0.1ms and 2ms, 100 moves each.
     This function simulates multiple players making random moves concurrently
     to test that the game works correctly under concurrent access and never crashes.
     
@@ -23,61 +24,87 @@ async def simulation_main():
     filename = 'boards/ab.txt'
     board: Board = await Board.parse_from_file(filename)
     size = board.get_rows()  # Use actual board size
-    players = 3  # Multiple concurrent players
-    tries = 20  # More attempts per player
-    max_delay_milliseconds = 50  # Shorter delays for faster testing
+    players = 4  # Required: 4 players
+    moves_per_player = 100  # Required: 100 moves each
+    min_delay_ms = 0.1  # Required: minimum 0.1ms
+    max_delay_ms = 2.0  # Required: maximum 2ms
 
-    print(f'Starting simulation with {players} players, {tries} tries each')
+    print(f'Starting simulation with {players} players, {moves_per_player} moves each')
     print(f'Board size: {size}x{size}')
+    print(f'Delay range: {min_delay_ms}ms - {max_delay_ms}ms')
     
     # start up one or more players as concurrent asynchronous function calls
     player_tasks = []
     for ii in range(players):
-        player_tasks.append(player(ii, board, size, tries, max_delay_milliseconds))
+        # Use different random seeds for different movesets
+        random.seed(ii * 42)  # Different seed per player for different movesets
+        player_tasks.append(player(ii, board, size, moves_per_player, min_delay_ms, max_delay_ms))
     
     # wait for all the players to finish (unless one throws an exception)
     try:
-        await asyncio.gather(*player_tasks)
-        print('Simulation completed successfully - no crashes!')
+        movesets = await asyncio.gather(*player_tasks)
+        print('\n' + '='*60)
+        print('SIMULATION COMPLETED SUCCESSFULLY - NO CRASHES!')
+        print('='*60)
+        
+        # Print movesets for each player
+        print('\nMovesets for each player:')
+        print('-'*60)
+        for player_num, moveset in enumerate(movesets):
+            print(f'\nPlayer {player_num} moveset ({len(moveset)} moves):')
+            for move_idx, move in enumerate(moveset):
+                (row1, col1), (row2, col2) = move
+                print(f'  Move {move_idx + 1}: ({row1},{col1}) -> ({row2},{col2})')
+        
+        print('\n' + '='*60)
         board.check_rep()  # Verify board is still in valid state
     except Exception as err:
         print(f'Simulation failed with error: {err}')
         raise
 
 
-async def player(player_number: int, board: Board, size: int, tries: int, max_delay_ms: int):
+async def player(player_number: int, board: Board, size: int, moves: int, min_delay_ms: float, max_delay_ms: float):
     """
-    Simulate a player making random moves.
+    Simulate a player making moves.
     
-    This function simulates a player making random moves on the board with random delays.
-    The goal is to test that the game never crashes under concurrent access.
+    Each move consists of flipping two cards (first card, then second card).
+    Uses random delays between actions to simulate realistic gameplay.
     
     Args:
         player_number: player identifier (used to create unique player IDs)
         board: game board
         size: board size (used to generate random positions)
-        tries: number of attempts to flip cards
+        moves: number of moves (each move = 2 card flips)
+        min_delay_ms: minimum delay between actions in milliseconds
         max_delay_ms: maximum delay between actions in milliseconds
+    
+    Returns:
+        List of moves made by this player, where each move is ((row1, col1), (row2, col2))
     """
     player_id = f'player_{player_number}'
+    moveset = []  # Track all moves for this player
     
-    for jj in range(tries):
+    for move_num in range(moves):
+        # Generate positions for this move (before any delays/operations)
+        row1 = random_int(size)
+        col1 = random_int(size)
+        row2 = random_int(size)
+        col2 = random_int(size)
+        
         try:
-            # Random delay before first card flip
-            await timeout(random.random() * max_delay_ms)
+            # Random delay before first card flip (between min and max)
+            delay = min_delay_ms + random.random() * (max_delay_ms - min_delay_ms)
+            await timeout(delay)
             
             # Try to flip over a first card at random position
             # This might wait until this player can control that card (Rule 1-D)
-            row1 = random_int(size)
-            col1 = random_int(size)
             await board.flip_card(player_id, row1, col1)
             
             # Random delay before second card flip
-            await timeout(random.random() * max_delay_ms)
+            delay = min_delay_ms + random.random() * (max_delay_ms - min_delay_ms)
+            await timeout(delay)
             
             # Try to flip over a second card at random position
-            row2 = random_int(size)
-            col2 = random_int(size)
             await board.flip_card(player_id, row2, col2)
             
         except (ValueError, IndexError) as err:
@@ -86,8 +113,13 @@ async def player(player_number: int, board: Board, size: int, tries: int, max_de
             pass
         except Exception as err:
             # Unexpected errors should be logged
-            print(f'Player {player_number} attempt {jj} failed with unexpected error: {err}')
+            print(f'Player {player_number} move {move_num} failed with unexpected error: {err}')
             raise
+        
+        # Record the move (regardless of success/failure)
+        moveset.append(((row1, col1), (row2, col2)))
+    
+    return moveset
 
 
 def random_int(max_val: int) -> int:

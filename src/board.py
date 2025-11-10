@@ -184,6 +184,20 @@ class Board:
         """
         return self._columns
     
+    async def look(self, player_id: str) -> str:
+        """
+        Looks at the current state of the board.
+        
+        This is a convenience method that matches the TypeScript Board interface pattern.
+        It's an alias for get_board_state() but made async for consistency.
+        
+        Args:
+            player_id: ID of the player viewing the board
+        Returns:
+            Board state string
+        """
+        return self.get_board_state(player_id)
+    
     def get_board_state(self, player_id: str) -> str:
         """
         Returns the board state from the perspective of the given player.
@@ -222,6 +236,26 @@ class Board:
                     lines.append(f'up {self._cards[r][c]}')
         
         return '\n'.join(lines) + '\n'
+    
+    async def flip(self, player_id: str, row: int, column: int) -> str:
+        """
+        Tries to flip over a card and returns the board state.
+        
+        This is a convenience method that combines flip_card() and get_board_state().
+        Matches the TypeScript Board interface pattern.
+        
+        Args:
+            player_id: ID of the player making the flip
+            row: row index (0-based)
+            column: column index (0-based)
+        Returns:
+            Board state string after the flip
+        Raises:
+            ValueError if the flip operation fails (rules 1-A, 2-A, 2-B)
+            IndexError if row or column is out of bounds
+        """
+        await self.flip_card(player_id, row, column)
+        return self.get_board_state(player_id)
     
     async def flip_card(self, player_id: str, row: int, column: int) -> None:
         """
@@ -457,6 +491,21 @@ class Board:
         # Clear the list (watchers will create new events if they want to watch again)
         self._change_watchers.clear()
     
+    async def watch(self, player_id: str) -> str:
+        """
+        Watches the board for a change and returns the board state.
+        
+        This is a convenience method that combines watch_for_change() and get_board_state().
+        Matches the TypeScript Board interface pattern.
+        
+        Args:
+            player_id: ID of the player watching the board
+        Returns:
+            Board state string after a change occurs
+        """
+        await self.watch_for_change()
+        return self.get_board_state(player_id)
+    
     async def watch_for_change(self) -> None:
         """
         Wait for the next board change.
@@ -519,6 +568,22 @@ class Board:
                 # Clean up empty lists
                 if not self._player_cards[player_id]:
                     del self._player_cards[player_id]
+    
+    async def map(self, player_id: str, f: Callable[[str], Awaitable[str]]) -> str:
+        """
+        Modifies board by replacing every card with f(card) and returns the board state.
+        
+        This is a convenience method that combines map_cards() and get_board_state().
+        Matches the TypeScript Board interface pattern.
+        
+        Args:
+            player_id: ID of the player applying the map
+            f: async function from cards to cards
+        Returns:
+            Board state string after the replacement
+        """
+        await self.map_cards(player_id, f)
+        return self.get_board_state(player_id)
     
     async def map_cards(self, player_id: str, f: Callable[[str], Awaitable[str]]) -> None:
         """

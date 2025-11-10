@@ -26,7 +26,7 @@ async def look(board: Board, player_id: str) -> str:
         the state of the board from the perspective of player_id, in the format 
         described in the ps4 handout
     """
-    return board.get_board_state(player_id)
+    return await board.look(player_id)
 
 
 async def flip(board: Board, player_id: str, row: int, column: int) -> str:
@@ -49,8 +49,7 @@ async def flip(board: Board, player_id: str, row: int, column: int) -> str:
     Raises:
         an error if the flip operation fails as described in the ps4 handout.
     """
-    await board.flip_card(player_id, row, column)
-    return board.get_board_state(player_id)
+    return await board.flip(player_id, row, column)
 
 
 async def map_cards(board: Board, player_id: str, f: Callable[[str], Awaitable[str]]) -> str:
@@ -79,8 +78,7 @@ async def map_cards(board: Board, player_id: str, f: Callable[[str], Awaitable[s
         the state of the board after the replacement from the perspective of player_id,
         in the format described in the ps4 handout
     """
-    await board.map_cards(player_id, f)
-    return board.get_board_state(player_id)
+    return await board.map(player_id, f)
 
 
 async def watch(board: Board, player_id: str) -> str:
@@ -96,5 +94,4 @@ async def watch(board: Board, player_id: str) -> str:
         the updated state of the board from the perspective of player_id, in the 
         format described in the ps4 handout
     """
-    await board.watch_for_change()
-    return board.get_board_state(player_id)
+    return await board.watch(player_id)
