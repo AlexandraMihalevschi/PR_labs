@@ -343,11 +343,26 @@ class Board:
                     controlled_cards = self._player_cards.get(player_id, [])
                     num_controlled = len(controlled_cards)
                 
+                # Check if the card still exists (it might have been removed while waiting)
+                # This check must happen after cleanup but before trying to flip
+                # This ensures waiting players fail immediately when their card is removed
+                if self._cards[row][column] is None:
+                    # If player was waiting for their first card, fail immediately
+                    if num_controlled == 0:
+                        raise ValueError(f'No card at position ({row}, {column})')
+                    # If player was waiting for their second card, relinquish first card and fail
+                    elif num_controlled == 1:
+                        first_card_pos = controlled_cards[0]
+                        first_row, first_col = first_card_pos
+                        # Relinquish control of first card (but it remains face up)
+                        self._relinquish_control(player_id, first_row, first_col)
+                        # Record previous move for cleanup (Rule 3-B): one card that was relinquished
+                        self._previous_moves[player_id] = ([(first_row, first_col)], False)
+                        self._notify_waiting_players((first_row, first_col))
+                        raise ValueError(f'No card at position ({row}, {column})')
+                
                 # First card (player controls 0 cards after cleanup, or had 0 to begin with)
                 if num_controlled == 0:
-                    # Rule 1-A: Empty space
-                    if self._cards[row][column] is None:
-                        raise ValueError(f'No card at position ({row}, {column})')
                     
                     controller = self._controllers[row][column]
                     
@@ -390,8 +405,10 @@ class Board:
                     
                     # Rule 2-A: Empty space
                     if self._cards[row][column] is None:
-                        # Relinquish control of first card
+                        # Relinquish control of first card (but it remains face up)
                         self._relinquish_control(player_id, first_row, first_col)
+                        # Record previous move for cleanup (Rule 3-B): one card that was relinquished
+                        self._previous_moves[player_id] = ([(first_row, first_col)], False)
                         self._notify_waiting_players((first_row, first_col))
                         raise ValueError(f'No card at position ({row}, {column})')
                     
@@ -402,6 +419,8 @@ class Board:
                     if self._face_up[row][column] and controller is not None:
                         # Relinquish control of first card (but it remains face up)
                         self._relinquish_control(player_id, first_row, first_col)
+                        # Record previous move for cleanup (Rule 3-B): one card that was relinquished
+                        self._previous_moves[player_id] = ([(first_row, first_col)], False)
                         self._notify_waiting_players((first_row, first_col))
                         raise ValueError(f'Card at ({row}, {column}) is controlled by a player')
                     
@@ -472,6 +491,11 @@ class Board:
                 event.set()
             # Clear the list (players will create new events if they need to wait again)
             self._waiting_players[position].clear()
+            # If the list is now empty and the card is removed, delete the entry
+            # to prevent stale state from affecting future operations
+            if len(events) > 0 and self._cards[position[0]][position[1]] is None:
+                # We just notified players about a removed card, so delete the entry
+                del self._waiting_players[position]
     
     def _notify_change_watchers(self) -> None:
         """

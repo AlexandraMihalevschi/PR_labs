@@ -1,27 +1,12 @@
-# Use Python 3.11 slim image
 FROM python:3.11-slim
-
-# Set working directory
 WORKDIR /app
-
-# Install system dependencies if needed
 RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the application code (src, boards, public directories)
 COPY src/ ./src/
 COPY boards/ ./boards/
 COPY public/ ./public/
-
-# Expose port (default for the server)
 EXPOSE 8080
-
-# Default command - run the server
-# Can be overridden with docker-compose or docker run
 CMD ["python", "-m", "src.server", "8080", "boards/ab.txt"]
