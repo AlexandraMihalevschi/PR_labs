@@ -26,10 +26,14 @@ class TestMapCards:
         
         await map_cards(board, 'player1', replace_a_with_x)
         
+        # Flip some cards to see the values (face-down cards show as "down")
+        await flip(board, 'player1', 0, 0)  # This was A, should now be X
+        await flip(board, 'player1', 0, 1)  # This is B, should remain B
+        
         # Verify all A cards were replaced with X
         state = await look(board, 'player1')
         assert 'X' in state
-        assert 'A' not in state
+        assert 'my X' in state or 'up X' in state
         assert 'B' in state  # B should remain
         
         board.check_rep()
@@ -90,7 +94,7 @@ class TestMapCards:
         board = await Board.parse_from_file('boards/ab.txt')
         
         # Identify two matching cards
-        # In ab.txt, (0,0) and (0,2) both have A
+        # In ab.txt, (0,0) and (0,4) both have A
         
         async def async_transform(card: str) -> str:
             await asyncio.sleep(0.01)
@@ -183,6 +187,10 @@ class TestMapCards:
         # Verify board is in valid state
         board.check_rep()
         
+        # Flip some cards to see the transformed values (face-down cards show as "down")
+        await flip(board, 'player1', 0, 0)
+        await flip(board, 'player1', 0, 1)
+        
         # Verify all cards have been transformed
         state = await look(board, 'player1')
         # Cards should have _1 or _2 suffix
@@ -198,6 +206,9 @@ class TestMapCards:
         
         await map_cards(board, 'player1', transform_unicorn)
         
+        # Flip a card to see the transformed value (face-down cards show as "down")
+        await flip(board, 'player1', 0, 0)
+        
         state = await look(board, 'player1')
         assert '🦄_new' in state
         
@@ -210,7 +221,7 @@ class TestMapCards:
         
         # Flip some cards face up to see their values
         await flip(board, 'player1', 0, 0)  # This is A
-        await flip(board, 'player1', 0, 2)  # This is also A (matching)
+        await flip(board, 'player1', 0, 4)  # This is also A (matching)
         
         # Verify they match
         state_before = await look(board, 'player1')
@@ -227,8 +238,8 @@ class TestMapCards:
         state_after = await look(board, 'player1')
         lines = state_after.strip().split('\n')
         # Both cards should show as "my MATCHED" (they still match)
-        assert 'my MATCHED' in lines[1] or lines[1] == 'my MATCHED'
-        assert 'my MATCHED' in lines[3] or lines[3] == 'my MATCHED'
+        assert 'my MATCHED' in lines[1] or lines[1] == 'my MATCHED'  # Position (0,0)
+        assert 'my MATCHED' in lines[5] or lines[5] == 'my MATCHED'  # Position (0,4)
         
         board.check_rep()
     
@@ -237,9 +248,9 @@ class TestMapCards:
         """Test that map works even when cards are controlled by players."""
         board = await Board.parse_from_file('boards/ab.txt')
         
-        # Player1 controls some cards
+        # Player1 controls some cards (both A)
         await flip(board, 'player1', 0, 0)
-        await flip(board, 'player1', 0, 2)  # Match
+        await flip(board, 'player1', 0, 4)  # Match
         
         # Verify cards are controlled
         state_before = await look(board, 'player1')
@@ -257,11 +268,11 @@ class TestMapCards:
         assert 'my A' not in state_after
         
         # Player should still control the cards (verify via board state)
-        # Cards at (0,0) and (0,2) should still show as "my X"
+        # Cards at (0,0) and (0,4) should still show as "my X"
         lines = state_after.strip().split('\n')
-        # Position (0,0) is line 1, (0,2) is line 3
+        # Position (0,0) is line 1, (0,4) is line 5
         assert 'my X' in lines[1] or lines[1] == 'my X'
-        assert 'my X' in lines[3] or lines[3] == 'my X'
+        assert 'my X' in lines[5] or lines[5] == 'my X'
         
         board.check_rep()
 

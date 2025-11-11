@@ -63,7 +63,7 @@ class TestRule1A:
         board._controllers[0][0] = None
         
         with pytest.raises(ValueError, match='No card'):
-            board.flip_card('player1', 0, 0)
+            await board.flip_card('player1', 0, 0)
         
         board.check_rep()
     
@@ -77,7 +77,7 @@ class TestRule1A:
         board._controllers[1][1] = None
         
         with pytest.raises(ValueError, match='No card'):
-            board.flip_card('player1', 1, 1)
+            await board.flip_card('player1', 1, 1)
         
         board.check_rep()
 
@@ -93,7 +93,7 @@ class TestRule1B:
         assert not board._face_up[0][0]
         assert board._controllers[0][0] is None
         
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         
         # Card should now be face up and controlled
         assert board._face_up[0][0]
@@ -111,7 +111,7 @@ class TestRule1B:
     async def test_rule_1b_all_players_can_see(self):
         """Rule 1-B: When a card turns face up, all players can see it."""
         board = await Board.parse_from_file('boards/ab.txt')
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         
         # Another player should see the card as "up A" (not "my A")
         state = board.get_board_state('player2')
@@ -132,7 +132,7 @@ class TestRule1C:
         board._face_up[0][0] = True
         board._controllers[0][0] = None  # Uncontrolled
         
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         
         # Player should now control the card
         assert board._face_up[0][0]
@@ -156,7 +156,7 @@ class TestRule1C:
         # Verify it's face up before
         assert board._face_up[0][0]
         
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         
         # Should still be face up after
         assert board._face_up[0][0]
@@ -170,7 +170,7 @@ class TestRule1D:
     
     @pytest.mark.asyncio
     async def test_rule_1d_controlled_by_another_raises_error(self):
-        """Rule 1-D: In sync version, trying to flip a card controlled by another player raises error."""
+        """Rule 1-D: In async version, trying to flip a card controlled by another player waits."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Player2 controls a card
         board._face_up[0][0] = True
@@ -179,12 +179,27 @@ class TestRule1D:
             board._player_cards['player2'] = []
         board._player_cards['player2'].append((0, 0))
         
-        # Player1 tries to flip it
-        with pytest.raises(ValueError, match='controlled by another player'):
-            board.flip_card('player1', 0, 0)
+        # Player1 tries to flip it - should wait (not raise error in async version)
+        async def player1_flip():
+            await board.flip_card('player1', 0, 0)
+            return True
         
-        # Card should still be controlled by player2
-        assert board._controllers[0][0] == 'player2'
+        # Start the flip (it will wait)
+        task = asyncio.create_task(player1_flip())
+        await asyncio.sleep(0.01)  # Give it time to start waiting
+        
+        # Verify it's waiting (task not done yet)
+        assert not task.done()
+        
+        # Player2 relinquishes control
+        await board.flip_card('player2', 0, 1)  # Non-matching
+        await board.flip_card('player2', 1, 0)  # Cleanup
+        
+        # Now player1 should get control
+        await task
+        
+        # Card should now be controlled by player1
+        assert board._controllers[0][0] == 'player1'
         
         board.check_rep()
 
@@ -197,7 +212,7 @@ class TestRule2A:
         """Rule 2-A: Flipping an empty space as second card fails."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Player controls first card
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         assert (0, 0) in board._player_cards.get('player1', [])
         
         # Remove second card
@@ -207,7 +222,7 @@ class TestRule2A:
         
         # Try to flip empty space
         with pytest.raises(ValueError, match='No card'):
-            board.flip_card('player1', 0, 1)
+            await board.flip_card('player1', 0, 1)
         
         # First card should no longer be controlled (relinquished)
         assert board._controllers[0][0] is None
@@ -221,11 +236,11 @@ class TestRule2A:
     async def test_rule_2a_first_card_stays_face_up(self):
         """Rule 2-A: First card remains face up after failure."""
         board = await Board.parse_from_file('boards/ab.txt')
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         board._cards[0][1] = None
         
         with pytest.raises(ValueError):
-            board.flip_card('player1', 0, 1)
+            await board.flip_card('player1', 0, 1)
         
         # First card should be face up but not controlled
         state = board.get_board_state('player1')
@@ -243,7 +258,7 @@ class TestRule2B:
         """Rule 2-B: Flipping a card controlled by another player as second card fails."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Player1 controls first card
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         
         # Player2 controls another card
         board._face_up[0][1] = True
@@ -254,7 +269,7 @@ class TestRule2B:
         
         # Player1 tries to flip player2's card
         with pytest.raises(ValueError, match='controlled by a player'):
-            board.flip_card('player1', 0, 1)
+            await board.flip_card('player1', 0, 1)
         
         # Player1 should have relinquished control of first card
         assert board._controllers[0][0] is None
@@ -271,7 +286,7 @@ class TestRule2B:
         """Rule 2-B: Any controlled card (by any player) cannot be flipped as second card."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Player1 controls first card
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         
         # Set up a scenario where player1 has previously controlled a card that's still controlled
         # This simulates a case where after a match, player1 still has control
@@ -284,7 +299,7 @@ class TestRule2B:
         
         # Player1 tries to flip player2's controlled card as second card
         with pytest.raises(ValueError, match='controlled by a player'):
-            board.flip_card('player1', 0, 1)
+            await board.flip_card('player1', 0, 1)
         
         # Verify player1 relinquished control of first card
         assert board._controllers[0][0] is None
@@ -297,7 +312,7 @@ class TestRule2B:
     async def test_rule_2b_no_waiting(self):
         """Rule 2-B: Operation does not wait (to avoid deadlocks)."""
         board = await Board.parse_from_file('boards/ab.txt')
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         
         # Another player controls a card
         board._face_up[0][1] = True
@@ -308,7 +323,7 @@ class TestRule2B:
         
         # Should fail immediately, not wait
         with pytest.raises(ValueError):
-            board.flip_card('player1', 0, 1)
+            await board.flip_card('player1', 0, 1)
         
         board.check_rep()
 
@@ -321,13 +336,13 @@ class TestRule2C:
         """Rule 2-C: Flipping a face-down card as second card turns it face up."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Player controls first card
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         
         # Second card is face down
         assert not board._face_up[0][1]
         
         # Flip second card
-        board.flip_card('player1', 0, 1)
+        await board.flip_card('player1', 0, 1)
         
         # Second card should now be face up
         assert board._face_up[0][1]
@@ -350,25 +365,25 @@ class TestRule2D:
         """Rule 2-D: When two cards match, player keeps control of both."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Flip first card (A at 0,0)
-        board.flip_card('player1', 0, 0)
-        # Flip matching card (A at 0,2)
-        board.flip_card('player1', 0, 2)
+        await board.flip_card('player1', 0, 0)
+        # Flip matching card (A at 0,4) - both are A
+        await board.flip_card('player1', 0, 4)
         
         # Player should control both cards
         assert board._controllers[0][0] == 'player1'
-        assert board._controllers[0][2] == 'player1'
+        assert board._controllers[0][4] == 'player1'
         assert (0, 0) in board._player_cards.get('player1', [])
-        assert (0, 2) in board._player_cards.get('player1', [])
+        assert (0, 4) in board._player_cards.get('player1', [])
         assert len(board._player_cards.get('player1', [])) == 2
         
         # Both cards should be face up
         assert board._face_up[0][0]
-        assert board._face_up[0][2]
+        assert board._face_up[0][4]
         
         state = board.get_board_state('player1')
         lines = state.strip().split('\n')
-        assert lines[1] == 'my A'
-        assert lines[3] == 'my A'
+        assert lines[1] == 'my A'  # Position (0,0)
+        assert lines[5] == 'my A'  # Position (0,4)
         
         board.check_rep()
     
@@ -376,14 +391,14 @@ class TestRule2D:
     async def test_rule_2d_cards_remain_face_up(self):
         """Rule 2-D: Matched cards remain face up on the board."""
         board = await Board.parse_from_file('boards/ab.txt')
-        board.flip_card('player1', 0, 0)
-        board.flip_card('player1', 0, 2)
+        await board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 4)  # Matching A card
         
         # Cards should still be on board (not removed yet)
         assert board._cards[0][0] is not None
-        assert board._cards[0][2] is not None
+        assert board._cards[0][4] is not None
         assert board._face_up[0][0]
-        assert board._face_up[0][2]
+        assert board._face_up[0][4]
         
         board.check_rep()
 
@@ -396,9 +411,9 @@ class TestRule2E:
         """Rule 2-E: When two cards don't match, player relinquishes control of both."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Flip first card (A)
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         # Flip second card (B) - doesn't match
-        board.flip_card('player1', 0, 1)
+        await board.flip_card('player1', 0, 1)
         
         # Player should not control either card
         assert board._controllers[0][0] is None
@@ -421,8 +436,8 @@ class TestRule2E:
     async def test_rule_2e_cards_remain_face_up(self):
         """Rule 2-E: Non-matching cards remain face up on the board."""
         board = await Board.parse_from_file('boards/ab.txt')
-        board.flip_card('player1', 0, 0)
-        board.flip_card('player1', 0, 1)
+        await board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 1)
         
         # Cards should still be on board and face up
         assert board._cards[0][0] is not None
@@ -440,30 +455,30 @@ class TestRule3A:
     async def test_rule_3a_remove_matched_cards(self):
         """Rule 3-A: Matched cards are removed when player flips a new first card."""
         board = await Board.parse_from_file('boards/ab.txt')
-        # Match two cards
-        board.flip_card('player1', 0, 0)
-        board.flip_card('player1', 0, 2)
+        # Match two cards (both A)
+        await board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 4)  # Matching A card
         
         # Verify they're controlled
         assert len(board._player_cards.get('player1', [])) == 2
         
         # Flip a new first card (triggers cleanup)
-        board.flip_card('player1', 1, 0)
+        await board.flip_card('player1', 1, 0)
         
         # Matched cards should be removed
         assert board._cards[0][0] is None
-        assert board._cards[0][2] is None
+        assert board._cards[0][4] is None
         assert not board._face_up[0][0]
-        assert not board._face_up[0][2]
+        assert not board._face_up[0][4]
         assert board._controllers[0][0] is None
-        assert board._controllers[0][2] is None
+        assert board._controllers[0][4] is None
         assert (0, 0) not in board._player_cards.get('player1', [])
-        assert (0, 2) not in board._player_cards.get('player1', [])
+        assert (0, 4) not in board._player_cards.get('player1', [])
         
         state = board.get_board_state('player1')
         lines = state.strip().split('\n')
-        assert lines[1] == 'none'  # First matched card removed
-        assert lines[3] == 'none'  # Second matched card removed
+        assert lines[1] == 'none'  # First matched card removed (0,0)
+        assert lines[5] == 'none'  # Second matched card removed (0,4)
         
         board.check_rep()
     
@@ -471,12 +486,12 @@ class TestRule3A:
     async def test_rule_3a_player_relinquishes_control(self):
         """Rule 3-A: Player relinquishes control when cards are removed."""
         board = await Board.parse_from_file('boards/ab.txt')
-        board.flip_card('player1', 0, 0)
-        board.flip_card('player1', 0, 2)
+        await board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 4)  # Matching A card
         
         assert len(board._player_cards.get('player1', [])) == 2
         
-        board.flip_card('player1', 1, 0)
+        await board.flip_card('player1', 1, 0)
         
         # Player should no longer control the removed cards
         # Player should now control the new card
@@ -494,8 +509,8 @@ class TestRule3B:
         """Rule 3-B: Non-matching cards turn face down if uncontrolled."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Flip two non-matching cards
-        board.flip_card('player1', 0, 0)
-        board.flip_card('player1', 0, 1)
+        await board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 1)
         
         # Verify they're face up but not controlled
         assert board._face_up[0][0]
@@ -504,7 +519,7 @@ class TestRule3B:
         assert board._controllers[0][1] is None
         
         # Flip a new first card (triggers cleanup)
-        board.flip_card('player1', 1, 0)
+        await board.flip_card('player1', 1, 0)
         
         # Non-matching cards should be face down
         assert not board._face_up[0][0]
@@ -525,8 +540,8 @@ class TestRule3B:
         """Rule 3-B: Cards controlled by another player stay face up."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Player1 flips two non-matching cards
-        board.flip_card('player1', 0, 0)
-        board.flip_card('player1', 0, 1)
+        await board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 1)
         
         # Another player takes control of one card
         board._controllers[0][0] = 'player2'
@@ -535,7 +550,7 @@ class TestRule3B:
         board._player_cards['player2'].append((0, 0))
         
         # Player1 flips a new first card (triggers cleanup)
-        board.flip_card('player1', 1, 0)
+        await board.flip_card('player1', 1, 0)
         
         # Card controlled by player2 should stay face up
         assert board._face_up[0][0]
@@ -556,8 +571,8 @@ class TestRule3B:
         """Rule 3-B: Cards that were removed are not affected."""
         board = await Board.parse_from_file('boards/ab.txt')
         # Player flips two non-matching cards
-        board.flip_card('player1', 0, 0)
-        board.flip_card('player1', 0, 1)
+        await board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 1)
         
         # Simulate one card being removed by another player
         board._cards[0][0] = None
@@ -565,7 +580,7 @@ class TestRule3B:
         board._controllers[0][0] = None
         
         # Player flips a new first card (triggers cleanup)
-        board.flip_card('player1', 1, 0)
+        await board.flip_card('player1', 1, 0)
         
         # Removed card should stay removed
         assert board._cards[0][0] is None
@@ -585,18 +600,18 @@ class TestRuleIntegration:
         board = await Board.parse_from_file('boards/ab.txt')
         
         # Player1 flips first card (rule 1-B)
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         assert board._controllers[0][0] == 'player1'
         
-        # Player1 flips matching second card (rule 2-D)
-        board.flip_card('player1', 0, 2)
+        # Player1 flips matching second card (rule 2-D) - both A cards
+        await board.flip_card('player1', 0, 4)
         assert board._controllers[0][0] == 'player1'
-        assert board._controllers[0][2] == 'player1'
+        assert board._controllers[0][4] == 'player1'
         
         # Player1 flips new first card (rule 3-A: removes matched cards)
-        board.flip_card('player1', 1, 0)
+        await board.flip_card('player1', 1, 0)
         assert board._cards[0][0] is None
-        assert board._cards[0][2] is None
+        assert board._cards[0][4] is None
         assert board._controllers[1][0] == 'player1'
         
         board.check_rep()
@@ -607,7 +622,7 @@ class TestRuleIntegration:
         board = await Board.parse_from_file('boards/ab.txt')
         
         # Player1 flips a card
-        board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 0)
         
         # Player1 sees it as "my A"
         state1 = board.get_board_state('player1')
@@ -625,32 +640,32 @@ class TestRuleIntegration:
         """Test that cards maintain their state (controlled/uncontrolled) correctly."""
         board = await Board.parse_from_file('boards/ab.txt')
         
-        # Player1 flips and matches two cards
-        board.flip_card('player1', 0, 0)
-        board.flip_card('player1', 0, 2)
+        # Player1 flips and matches two cards (both A)
+        await board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 4)  # Matching A card
         
         # Cards should be controlled by player1
         assert board._controllers[0][0] == 'player1'
-        assert board._controllers[0][2] == 'player1'
+        assert board._controllers[0][4] == 'player1'
         
         # Player1 sees them as "my A"
         state1 = board.get_board_state('player1')
         lines1 = state1.strip().split('\n')
-        assert lines1[1] == 'my A'
-        assert lines1[3] == 'my A'
+        assert lines1[1] == 'my A'  # Position (0,0)
+        assert lines1[5] == 'my A'  # Position (0,4)
         
         # Player2 sees them as "up A"
         state2 = board.get_board_state('player2')
         lines2 = state2.strip().split('\n')
-        assert lines2[1] == 'up A'
-        assert lines2[3] == 'up A'
+        assert lines2[1] == 'up A'  # Position (0,0)
+        assert lines2[5] == 'up A'  # Position (0,4)
         
         # Cards should stay controlled until player1 makes next move
         # (state should persist)
         state1_again = board.get_board_state('player1')
         lines1_again = state1_again.strip().split('\n')
-        assert lines1_again[1] == 'my A'
-        assert lines1_again[3] == 'my A'
+        assert lines1_again[1] == 'my A'  # Position (0,0)
+        assert lines1_again[5] == 'my A'  # Position (0,4)
         
         board.check_rep()
     
@@ -660,8 +675,8 @@ class TestRuleIntegration:
         board = await Board.parse_from_file('boards/ab.txt')
         
         # Player1 flips two non-matching cards
-        board.flip_card('player1', 0, 0)
-        board.flip_card('player1', 0, 1)
+        await board.flip_card('player1', 0, 0)
+        await board.flip_card('player1', 0, 1)
         
         # Player should have relinquished control
         assert board._controllers[0][0] is None

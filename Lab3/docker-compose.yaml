@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: DOCKERFILE
+    container_name: memory-scramble-server
+    volumes:
+      - ./src:/app/src
+      - ./boards:/app/boards
+      - ./public:/app/public
+    working_dir: /app
+    command: python -m src.server 8080 boards/ab.txt
+    ports:
+      - "8080:8080"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge
+

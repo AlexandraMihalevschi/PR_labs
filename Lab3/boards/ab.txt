@@ -1,8 +1,8 @@
 5x5
 A
 B
-A
-B
+C
+D
 A
 B
 A
