@@ -1,0 +1,83 @@
+version: "3.8"
+
+x-node-base: &node-common
+  build: .
+  image: kvstore-node:latest
+  restart: unless-stopped
+  networks:
+    - kvstore_network
+
+services:
+  leader:
+    <<: *node-common
+    container_name: kvstore_leader
+    command: python services/leader.py
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      FOLLOWERS: "http://follower1:8001,http://follower2:8002,http://follower3:8003,http://follower4:8004,http://follower5:8005"
+      WRITE_QUORUM: "${WRITE_QUORUM:-3}"
+      MIN_DELAY: "${MIN_DELAY:-0.01}"
+      MAX_DELAY: "${MAX_DELAY:-0.2}"
+      FOLLOWER_TIMEOUT: "${FOLLOWER_TIMEOUT:-2.5}"
+    depends_on:
+      - follower1
+      - follower2
+      - follower3
+      - follower4
+      - follower5
+
+  follower1:
+    <<: *node-common
+    container_name: kvstore_follower1
+    command: python services/follower.py
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: 8001
+      FOLLOWER_ID: follower1
+
+  follower2:
+    <<: *node-common
+    container_name: kvstore_follower2
+    command: python services/follower.py
+    ports:
+      - "8002:8002"
+    environment:
+      PORT: 8002
+      FOLLOWER_ID: follower2
+
+  follower3:
+    <<: *node-common
+    container_name: kvstore_follower3
+    command: python services/follower.py
+    ports:
+      - "8003:8003"
+    environment:
+      PORT: 8003
+      FOLLOWER_ID: follower3
+
+  follower4:
+    <<: *node-common
+    container_name: kvstore_follower4
+    command: python services/follower.py
+    ports:
+      - "8004:8004"
+    environment:
+      PORT: 8004
+      FOLLOWER_ID: follower4
+
+  follower5:
+    <<: *node-common
+    container_name: kvstore_follower5
+    command: python services/follower.py
+    ports:
+      - "8005:8005"
+    environment:
+      PORT: 8005
+      FOLLOWER_ID: follower5
+
+networks:
+  kvstore_network:
+    driver: bridge
