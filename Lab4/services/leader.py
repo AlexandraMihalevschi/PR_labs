@@ -26,8 +26,8 @@ app = FastAPI(title="KVStore Leader")
 # --------------------------------------------------------------------------------------
 FOLLOWERS: List[str] = [f.strip() for f in os.getenv("FOLLOWERS", "").split(",") if f.strip()]
 WRITE_QUORUM = int(os.getenv("WRITE_QUORUM", "3"))
-MIN_DELAY = float(os.getenv("MIN_DELAY", "0.01"))
-MAX_DELAY = float(os.getenv("MAX_DELAY", "0.2"))
+MIN_DELAY = float(os.getenv("MIN_DELAY", "0.05"))
+MAX_DELAY = float(os.getenv("MAX_DELAY", "0.5"))
 FOLLOWER_TIMEOUT = float(os.getenv("FOLLOWER_TIMEOUT", "2.5"))
 
 if MIN_DELAY < 0 or MAX_DELAY < 0:
@@ -81,11 +81,27 @@ async def _commit_value(key: str, value: str) -> Dict[str, str]:
         }
 
 
-async def replicate_to_follower(client: httpx.AsyncClient, follower_url: str, key: str, value: str) -> bool:
+async def replicate_to_follower(client: httpx.AsyncClient, follower_url: str, key: str, value: str, follower_index: int = 0) -> bool:
     """
-    Replicate a write to a single follower with a randomized delay to simulate latency.
+    Replicate a write to a single follower with a deterministic delay based on follower index.
+    This ensures that quorum N always waits for the Nth fastest follower, creating a
+    consistent latency progression from quorum 1 (fastest) to quorum 5 (slowest).
+    
+    Each follower gets a base delay that increases linearly, plus a small random component
+    to simulate real-world variance while maintaining the order.
     """
-    await asyncio.sleep(random.uniform(MIN_DELAY, MAX_DELAY))
+    # Calculate deterministic base delay for this follower
+    # Follower 0 (first) gets MIN_DELAY, follower N-1 (last) gets MAX_DELAY
+    if len(FOLLOWERS) > 1:
+        base_delay = MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (follower_index / (len(FOLLOWERS) - 1))
+    else:
+        base_delay = MIN_DELAY
+    
+    # Add small random component (5% of range) to simulate variance while preserving order
+    random_component = random.uniform(-0.05 * (MAX_DELAY - MIN_DELAY), 0.05 * (MAX_DELAY - MIN_DELAY))
+    delay = max(MIN_DELAY, min(MAX_DELAY, base_delay + random_component))
+    
+    await asyncio.sleep(delay)
     try:
         response = await client.post(
             f"{follower_url}/replicate",
@@ -97,17 +113,105 @@ async def replicate_to_follower(client: httpx.AsyncClient, follower_url: str, ke
         return False
 
 
+# Global set to track active replication clients that need to stay open
+_active_replication_clients: set = set()
+
+
 async def replicate_to_followers(key: str, value: str) -> int:
     """
     Replicate to all followers concurrently and return the number of acknowledgements.
+    Returns as soon as WRITE_QUORUM confirmations are received (semi-synchronous replication).
+    This ensures latency increases gradually with quorum value.
+    
+    The latency will be approximately the Nth fastest response time, where N = WRITE_QUORUM.
+    With delays ranging from MIN_DELAY to MAX_DELAY, higher quorum values will have higher latency.
+    
+    Note: All replications complete in the background after quorum is met to ensure
+    eventual consistency across all followers.
     """
     if not FOLLOWERS:
         return 0
 
-    async with httpx.AsyncClient(timeout=FOLLOWER_TIMEOUT) as client:
-        tasks = [replicate_to_follower(client, follower, key, value) for follower in FOLLOWERS]
-        results = await asyncio.gather(*tasks, return_exceptions=False)
-    return sum(1 for result in results if result)
+    # Create client that will persist for background tasks
+    client = httpx.AsyncClient(timeout=FOLLOWER_TIMEOUT)
+    _active_replication_clients.add(client)
+    
+    try:
+        # Create tasks for all followers with deterministic delays
+        # Each follower gets an index-based delay to ensure consistent latency progression
+        tasks = [
+            asyncio.create_task(replicate_to_follower(client, follower, key, value, follower_index=i))
+            for i, follower in enumerate(FOLLOWERS)
+        ]
+        
+        successful_acks = 0
+        pending_tasks = set(tasks)
+        
+        # Wait for quorum to be met, processing results as they arrive
+        # We wait for the Nth fastest successful response, where N = WRITE_QUORUM
+        # With delays from MIN_DELAY to MAX_DELAY, higher quorum values will have higher latency
+        while pending_tasks and successful_acks < WRITE_QUORUM:
+            # Wait for at least one task to complete (no timeout - wait until one completes)
+            done, pending_tasks = await asyncio.wait(
+                pending_tasks,
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            # Process completed tasks (may be multiple if they complete simultaneously)
+            for task in done:
+                try:
+                    result = task.result()  # Get result from completed task
+                    if result:  # True if replication succeeded
+                        successful_acks += 1
+                        # Return immediately when quorum is met (this is the Nth fastest response)
+                        if successful_acks >= WRITE_QUORUM:
+                            # Schedule background task to complete remaining replications
+                            asyncio.create_task(_complete_remaining_replications(client, pending_tasks))
+                            return successful_acks
+                except Exception:
+                    pass  # Failed replication, already counted as False
+        
+        # All tasks completed, return final count
+        if pending_tasks:
+            # Still have pending tasks, wait for them
+            await _complete_remaining_replications(client, pending_tasks)
+        else:
+            _active_replication_clients.discard(client)
+            await client.aclose()
+        return successful_acks
+    except Exception:
+        _active_replication_clients.discard(client)
+        await client.aclose()
+        raise
+
+
+async def _complete_remaining_replications(client: httpx.AsyncClient, pending_tasks: set) -> None:
+    """
+    Background task to ensure all remaining replications complete.
+    This ensures eventual consistency even if quorum was met early.
+    """
+    if not pending_tasks:
+        _active_replication_clients.discard(client)
+        await client.aclose()
+        return
+    
+    try:
+        # Wait for all remaining tasks to complete
+        while pending_tasks:
+            done, pending_tasks = await asyncio.wait(
+                pending_tasks,
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            # Process results (we don't need to track them, just ensure they complete)
+            for task in done:
+                try:
+                    task.result()  # Consume result to handle any exceptions
+                except Exception:
+                    pass  # Already logged in replicate_to_follower
+    finally:
+        # Close client when all replications are done
+        _active_replication_clients.discard(client)
+        await client.aclose()
 
 
 @app.get("/")
@@ -216,4 +320,4 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("services.leader:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)

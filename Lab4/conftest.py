@@ -1,10 +1,7 @@
 """
 Pytest configuration for async tests.
-This ensures all async test functions are automatically handled by pytest-asyncio.
+pytest_asyncio is configured via pytest.ini with asyncio_mode = auto
 """
-import pytest
 
-# Configure pytest-asyncio to use the default event loop policy
-pytest_plugins = ('pytest_asyncio',)
 
 

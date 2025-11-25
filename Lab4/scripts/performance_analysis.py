@@ -120,6 +120,87 @@ async def verify_data_consistency() -> Dict[str, Dict[str, str]]:
     return {"leader": leader_diag, "followers": inconsistencies}
 
 
+async def check_race_conditions() -> Dict[str, any]:
+    """
+    Check for race conditions by:
+    1. Comparing all key-value pairs across leader and followers
+    2. Detecting lost updates (same key with different final values)
+    3. Checking version consistency
+    """
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        # Get full stores from all nodes
+        leader_store_resp = await client.get(f"{LEADER_URL}/store")
+        leader_store = leader_store_resp.json()
+        
+        follower_stores = {}
+        for url in FOLLOWER_URLS:
+            try:
+                resp = await client.get(f"{url}/store")
+                follower_stores[url] = resp.json()
+            except Exception as e:
+                follower_stores[url] = {"store": {}, "count": 0, "checksum": "ERROR"}
+        
+        # Check for race conditions
+        race_conditions = []
+        leader_data = leader_store.get("store", {})
+        
+        # Check 1: Key-value mismatches (lost updates)
+        for key, leader_value in leader_data.items():
+            for follower_url, follower_store_data in follower_stores.items():
+                follower_data = follower_store_data.get("store", {})
+                if key in follower_data:
+                    if follower_data[key] != leader_value:
+                        race_conditions.append({
+                            "type": "value_mismatch",
+                            "key": key,
+                            "leader_value": leader_value,
+                            "follower_value": follower_data[key],
+                            "follower": follower_url,
+                        })
+                else:
+                    race_conditions.append({
+                        "type": "missing_key",
+                        "key": key,
+                        "follower": follower_url,
+                    })
+        
+        # Check 2: Extra keys in followers (shouldn't happen, but indicates inconsistency)
+        for follower_url, follower_store_data in follower_stores.items():
+            follower_data = follower_store_data.get("store", {})
+            for key in follower_data:
+                if key not in leader_data:
+                    race_conditions.append({
+                        "type": "extra_key",
+                        "key": key,
+                        "follower_value": follower_data[key],
+                        "follower": follower_url,
+                    })
+        
+        # Check 3: Version consistency
+        leader_version = leader_store.get("version", 0)
+        version_mismatches = []
+        for follower_url, follower_store_data in follower_stores.items():
+            follower_version = follower_store_data.get("version", 0)
+            if abs(follower_version - leader_version) > 1:  # Allow small drift
+                version_mismatches.append({
+                    "follower": follower_url,
+                    "leader_version": leader_version,
+                    "follower_version": follower_version,
+                })
+        
+        return {
+            "race_conditions_detected": len(race_conditions),
+            "race_condition_details": race_conditions,
+            "version_mismatches": version_mismatches,
+            "all_consistent": len(race_conditions) == 0 and len(version_mismatches) == 0,
+            "leader_key_count": len(leader_data),
+            "follower_key_counts": {
+                url.split(":")[-1]: len(store.get("store", {}))
+                for url, store in follower_stores.items()
+            },
+        }
+
+
 async def test_write_quorum_performance():
     """Benchmark quorum values 1..5 with 100 writes (10 concurrent, 10 keys)."""
     quorum_values = [1, 2, 3, 4, 5]
@@ -169,6 +250,18 @@ async def test_write_quorum_performance():
         print(f"  P99 latency: {p99_latency * 1000:.2f} ms")
         print(f"  Success rate: {success_rate * 100:.1f}%")
         print(f"  Total runtime: {total_time:.2f} s")
+        
+        # Check for race conditions after each quorum test
+        print("  Checking for race conditions...")
+        race_check = await check_race_conditions()
+        if race_check["race_conditions_detected"] > 0:
+            print(f"  ⚠️  RACE CONDITION DETECTED: {race_check['race_conditions_detected']} issues found!")
+            for detail in race_check["race_condition_details"][:5]:  # Show first 5
+                print(f"     - {detail['type']}: key='{detail['key']}' on {detail.get('follower', 'unknown')}")
+        else:
+            print("  ✓ No race conditions detected")
+        
+        results[quorum]["race_condition_check"] = race_check
 
     if not results:
         print("No results captured; aborting.")
@@ -176,17 +269,28 @@ async def test_write_quorum_performance():
 
     quorums = sorted(results.keys())
     avg_latencies_ms = [results[q]["avg_latency"] * 1000 for q in quorums]
+    median_latencies_ms = [results[q]["median_latency"] * 1000 for q in quorums]
+    p95_latencies_ms = [results[q]["p95_latency"] * 1000 for q in quorums]
+    p99_latencies_ms = [results[q]["p99_latency"] * 1000 for q in quorums]
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(quorums, avg_latencies_ms, marker="o", linewidth=2, markersize=8)
-    ax.set_xlabel("Write Quorum")
-    ax.set_ylabel("Average Latency (ms)")
-    ax.set_title("Write Quorum vs Average Latency\n(100 writes, 10 keys, 10 concurrent)")
+    fig, ax = plt.subplots(figsize=(12, 7))
+    
+    # Plot all metrics
+    ax.plot(quorums, avg_latencies_ms, marker="o", linewidth=2, markersize=8, label="Average", color="blue")
+    ax.plot(quorums, median_latencies_ms, marker="s", linewidth=2, markersize=7, label="Median", color="green")
+    ax.plot(quorums, p95_latencies_ms, marker="^", linewidth=2, markersize=7, label="P95", color="orange")
+    ax.plot(quorums, p99_latencies_ms, marker="d", linewidth=2, markersize=7, label="P99", color="red")
+    
+    ax.set_xlabel("Write Quorum", fontsize=12)
+    ax.set_ylabel("Latency (ms)", fontsize=12)
+    ax.set_title("Write Quorum vs Latency Metrics\n(100 writes, 10 keys, 10 concurrent)", fontsize=14)
     ax.grid(alpha=0.3)
     ax.set_xticks(quorums)
+    ax.legend(loc="best", fontsize=10)
 
+    # Add value labels for average (most important metric)
     for q, latency in zip(quorums, avg_latencies_ms):
-        ax.text(q, latency, f"{latency:.1f} ms", ha="center", va="bottom", fontsize=9)
+        ax.text(q, latency, f"{latency:.1f}", ha="center", va="bottom", fontsize=8, color="blue")
 
     plot_path = RESULTS_DIR / "write_quorum_vs_latency.png"
     plt.tight_layout()
@@ -194,13 +298,38 @@ async def test_write_quorum_performance():
     plt.close()
     print(f"\nLatency plot saved to {plot_path}")
 
+    print("\n" + "=" * 60)
+    print("Final Consistency and Race Condition Check")
+    print("=" * 60)
+    
     print("\nVerifying replica checksums...")
     consistency_report = await verify_data_consistency()
     all_consistent = all(info["checksum_match"] for info in consistency_report["followers"].values())
     if all_consistent:
-        print("Replica data integrity: OK (all checksums match)")
+        print("✓ Replica data integrity: OK (all checksums match)")
     else:
-        print("Replica data integrity: ALERT (checksum mismatch detected)")
+        print("✗ Replica data integrity: ALERT (checksum mismatch detected)")
+        for url, info in consistency_report["followers"].items():
+            if not info["checksum_match"]:
+                print(f"  - {url}: checksum mismatch")
+    
+    print("\nFinal race condition check across all quorum tests...")
+    final_race_check = await check_race_conditions()
+    if final_race_check["race_conditions_detected"] > 0:
+        print(f"✗ RACE CONDITIONS DETECTED: {final_race_check['race_conditions_detected']} issues")
+        print("  Details:")
+        for detail in final_race_check["race_condition_details"][:10]:  # Show first 10
+            print(f"    - {detail['type']}: key='{detail['key']}'")
+            if detail["type"] == "value_mismatch":
+                print(f"      Leader: {detail['leader_value'][:50]}...")
+                print(f"      Follower ({detail['follower']}): {detail['follower_value'][:50]}...")
+    else:
+        print("✓ No race conditions detected - all writes are consistent")
+    
+    if final_race_check["version_mismatches"]:
+        print(f"⚠️  Version mismatches: {len(final_race_check['version_mismatches'])}")
+        for mismatch in final_race_check["version_mismatches"]:
+            print(f"  - {mismatch['follower']}: leader v{mismatch['leader_version']}, follower v{mismatch['follower_version']}")
 
     explanation = (
         "Higher write quorums require more follower confirmations before the leader "
@@ -211,6 +340,7 @@ async def test_write_quorum_performance():
     report = {
         "results": results,
         "consistency_report": consistency_report,
+        "final_race_condition_check": final_race_check,
         "explanation": explanation,
         "parameters": {
             "num_writes": num_writes,

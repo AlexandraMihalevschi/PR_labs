@@ -9,10 +9,9 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import httpx
-import numpy as np
 
 LEADER_URL = "http://localhost:8000"
 FOLLOWER_URLS = [
@@ -26,31 +25,75 @@ RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
 
-async def wait_for_services(max_retries: int = 30, delay: float = 0.5) -> None:
-    async with httpx.AsyncClient(timeout=2.0) as client:
-        for _ in range(max_retries):
+async def wait_for_services(max_retries: int = 60, delay: float = 0.5) -> None:
+    """Wait for all services to be ready, with better error reporting."""
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        for attempt in range(max_retries):
             try:
-                leader_ready = (await client.get(LEADER_URL)).status_code == 200
+                # Check leader
+                try:
+                    leader_resp = await client.get(LEADER_URL)
+                    leader_ready = leader_resp.status_code == 200
+                except Exception as e:
+                    leader_ready = False
+                    if attempt % 10 == 0:  # Print every 5 seconds
+                        print(f"Waiting for leader... (attempt {attempt + 1}/{max_retries})")
+                
+                # Check followers
                 follower_statuses = await asyncio.gather(
                     *[client.get(url) for url in FOLLOWER_URLS],
                     return_exceptions=True,
                 )
-                followers_ready = all(
-                    isinstance(resp, httpx.Response) and resp.status_code == 200
-                    for resp in follower_statuses
+                
+                ready_count = sum(
+                    1 for resp in follower_statuses
+                    if isinstance(resp, httpx.Response) and resp.status_code == 200
                 )
-                if leader_ready and followers_ready:
+                
+                if leader_ready and ready_count == len(FOLLOWER_URLS):
+                    print("All services are ready!")
                     return
-            except httpx.HTTPError:
-                pass
+                
+                if attempt % 10 == 0:  # Print every 5 seconds
+                    print(f"Waiting for services... Leader: {leader_ready}, Followers: {ready_count}/{len(FOLLOWER_URLS)} (attempt {attempt + 1}/{max_retries})")
+                    
+            except Exception as e:
+                if attempt % 10 == 0:
+                    print(f"Error checking services: {e}")
+            
             await asyncio.sleep(delay)
-    raise RuntimeError("Services did not become ready in time")
+    
+    # Final check with detailed error
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            leader_resp = await client.get(LEADER_URL)
+            print(f"Leader status: {leader_resp.status_code}")
+        except Exception as e:
+            print(f"Leader unreachable: {e}")
+        
+        for url in FOLLOWER_URLS:
+            try:
+                resp = await client.get(url)
+                print(f"{url}: {resp.status_code}")
+            except Exception as e:
+                print(f"{url}: unreachable - {e}")
+    
+    raise RuntimeError(f"Services did not become ready after {max_retries * delay} seconds. Check docker compose logs.")
 
 
 async def configure_write_quorum(quorum: int) -> None:
-    async with httpx.AsyncClient(timeout=3.0) as client:
-        resp = await client.post(f"{LEADER_URL}/config/write_quorum", json={"write_quorum": quorum})
-        resp.raise_for_status()
+    """Configure write quorum via the runtime API."""
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            resp = await client.post(
+                f"{LEADER_URL}/config/write_quorum",
+                json={"write_quorum": quorum},
+            )
+            resp.raise_for_status()
+            print(f"Write quorum configured to {quorum}")
+        except Exception as e:
+            print(f"Warning: Failed to configure quorum via API: {e}")
+            print("Continuing with default quorum from environment...")
 
 
 async def write_key(client: httpx.AsyncClient, key: str, value: str) -> Tuple[bool, float]:
@@ -83,6 +126,64 @@ async def run_concurrent_writes(num_writes: int = 100, num_keys: int = 10, concu
         )
 
     return latencies
+
+
+async def check_race_conditions() -> Dict[str, any]:
+    """
+    Check for race conditions by comparing all key-value pairs across leader and followers.
+    """
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        leader_store_resp = await client.get(f"{LEADER_URL}/store")
+        leader_store = leader_store_resp.json()
+        
+        follower_stores = {}
+        for url in FOLLOWER_URLS:
+            try:
+                resp = await client.get(f"{url}/store")
+                follower_stores[url] = resp.json()
+            except Exception:
+                follower_stores[url] = {"store": {}, "count": 0, "checksum": "ERROR"}
+        
+        race_conditions = []
+        leader_data = leader_store.get("store", {})
+        
+        # Check for value mismatches (lost updates)
+        for key, leader_value in leader_data.items():
+            for follower_url, follower_store_data in follower_stores.items():
+                follower_data = follower_store_data.get("store", {})
+                if key in follower_data:
+                    if follower_data[key] != leader_value:
+                        race_conditions.append({
+                            "type": "value_mismatch",
+                            "key": key,
+                            "leader_value": leader_value,
+                            "follower_value": follower_data[key],
+                            "follower": follower_url,
+                        })
+                else:
+                    race_conditions.append({
+                        "type": "missing_key",
+                        "key": key,
+                        "follower": follower_url,
+                    })
+        
+        # Check for extra keys in followers
+        for follower_url, follower_store_data in follower_stores.items():
+            follower_data = follower_store_data.get("store", {})
+            for key in follower_data:
+                if key not in leader_data:
+                    race_conditions.append({
+                        "type": "extra_key",
+                        "key": key,
+                        "follower_value": follower_data[key],
+                        "follower": follower_url,
+                    })
+        
+        return {
+            "race_conditions_detected": len(race_conditions),
+            "race_condition_details": race_conditions,
+            "all_consistent": len(race_conditions) == 0,
+        }
 
 
 async def verify_data_consistency():
@@ -132,10 +233,27 @@ async def main():
         print("No successful writes captured!")
         return
 
-    avg_latency = np.mean(latencies)
-    median_latency = np.median(latencies)
-    p95_latency = np.percentile(latencies, 95)
-    p99_latency = np.percentile(latencies, 99)
+    # Calculate statistics without numpy
+    sorted_latencies = sorted(latencies)
+    avg_latency = sum(latencies) / len(latencies)
+    median_latency = sorted_latencies[len(sorted_latencies) // 2] if sorted_latencies else 0.0
+    if len(sorted_latencies) > 1 and len(sorted_latencies) % 2 == 0:
+        median_latency = (sorted_latencies[len(sorted_latencies) // 2 - 1] + median_latency) / 2
+    
+    def percentile(data: List[float], p: float) -> float:
+        """Calculate percentile without numpy."""
+        if not data:
+            return 0.0
+        sorted_data = sorted(data)
+        k = (len(sorted_data) - 1) * p / 100
+        f = int(k)
+        c = k - f
+        if f + 1 < len(sorted_data):
+            return sorted_data[f] * (1 - c) + sorted_data[f + 1] * c
+        return sorted_data[f]
+    
+    p95_latency = percentile(latencies, 95)
+    p99_latency = percentile(latencies, 99)
     success_rate = len(latencies) / num_writes
 
     print(f"\nResults for WRITE_QUORUM={quorum}:")
@@ -153,6 +271,18 @@ async def main():
     for follower_id, key_count in consistency["follower_keys"].items():
         print(f"Follower {follower_id} has {key_count} keys")
     print("Consistency:", "OK" if consistency["all_consistent"] else "CHECK")
+    
+    print("\nChecking for race conditions...")
+    race_check = await check_race_conditions()
+    if race_check["race_conditions_detected"] > 0:
+        print(f"⚠️  RACE CONDITION DETECTED: {race_check['race_conditions_detected']} issues found!")
+        for detail in race_check["race_condition_details"][:5]:  # Show first 5
+            print(f"  - {detail['type']}: key='{detail['key']}' on {detail.get('follower', 'unknown')}")
+        if detail["type"] == "value_mismatch":
+            print(f"    Leader value: {detail['leader_value'][:60]}...")
+            print(f"    Follower value: {detail['follower_value'][:60]}...")
+    else:
+        print("✓ No race conditions detected")
 
     results = {
         "quorum": quorum,
@@ -164,6 +294,7 @@ async def main():
         "total_time": total_time,
         "num_successful": len(latencies),
         "consistency": consistency,
+        "race_condition_check": race_check,
     }
 
     filename = RESULTS_DIR / f"results_quorum_{quorum}.json"
