@@ -10,9 +10,7 @@ Implement a concurrent single-leader key-value store with semi-synchronous repli
 
 ---
 
----
-
-## 1. Design Overview
+## 1. System details
 
 ### 1.1 System model
 
@@ -150,7 +148,9 @@ services:
 - Protected with a single `asyncio.Lock()` for simplicity.
 - Global `store_version` counter incremented on each write.
 - `async def _commit_value(key, value)` acquires lock, writes value, increments version, computes checksum.
-- Checksum computed as SHA-256 of sorted key-value pairs for consistency verification.
+- **Checksum computation**: SHA-256 hash of sorted key-value pairs (JSON-serialized) for data consistency verification.
+  - Ensures deterministic checksum regardless of insertion order
+  - Used to detect data inconsistencies between leader and followers
 
 ### 4.2 leader.py
 
@@ -169,8 +169,8 @@ services:
 
 - Additional endpoints:
   - `POST /config/write_quorum` - adjust quorum at runtime
-  - `GET /store` - return full store + checksum
-  - `GET /diagnostics` - expose status signals
+  - `GET /store` - return full store + checksum for consistency verification
+  - `GET /diagnostics` - expose status signals including checksum for data integrity checks
 
 ### 4.3 follower.py
 
@@ -185,20 +185,8 @@ services:
 - Followers run independently and accept concurrent replication requests from leader.
 - Additional endpoints:
   - `GET /get/{key}` - read a value
-  - `GET /store` - return full store + checksum
-  - `GET /diagnostics` - expose status signals
-
-![Result](results/img.png)
-![Result](result.png)
-
-Results during another runs:
-![Result](result_iterations/1.png)
-![Result](result_iterations/2.png)
-![Result](result_iterations/3.png)
-![Result](result_iterations/4.png)
-![Result](result_iterations/5.png)
-
-
+  - `GET /store` - return full store + checksum for consistency verification
+  - `GET /diagnostics` - expose status signals including checksum for data integrity checks
 
 ---
 
@@ -209,11 +197,11 @@ Results during another runs:
 **Test suite (`tests/test_integration.py`) includes:**
 
 1. `test_basic_write_read` - Write a key and verify it's present on leader and all followers.
-2. `test_multiple_writes_consistency` - Multiple writes with consistency verification.
-3. `test_concurrent_writes` - 20 concurrent writes to test concurrency model.
-4. `test_diagnostics_checksums_match` - Verify all replicas have matching checksums.
-5. `test_runtime_write_quorum_update` - Test dynamic quorum adjustment via API.
-6. `test_stores_match_after_writes` - Final consistency verification across all nodes.
+2. `test_multiple_writes_consistency` - Multiple writes with consistency verification using checksum comparison.
+3. `test_concurrent_writes` - 20 concurrent writes to test concurrency model and verify data consistency.
+4. `test_diagnostics_checksums_match` - Verify all replicas have matching checksums via `/diagnostics` endpoint.
+5. `test_runtime_write_quorum_update` - Test dynamic quorum adjustment via API and verify consistency maintained.
+6. `test_stores_match_after_writes` - Final consistency verification across all nodes using full store comparison.
 
 **Key features:**
 
@@ -234,6 +222,8 @@ pytest tests/test_integration.py -v
 - Services must be started first: `docker-compose up -d`
 - Tests verify writes reach the configured `WRITE_QUORUM`
 - All follower stores converge to match leader store
+- Consistency checks verify checksums match across all replicas
+- Race condition detection ensures no lost updates or value mismatches
 
 ![Result](results/image.png)
 
@@ -254,15 +244,19 @@ Measure how write latency varies with `WRITE_QUORUM` (1-5). Quantify the trade-o
   - Perform 100 writes total, 10 concurrent at a time (semaphore)
   - Spread across 10 keys
   - Measure: avg, median, p95, p99 latencies
-  - Check for race conditions and consistency
-  - Save results to `results/performance_results.json`
+  - Perform data consistency checks (checksum verification)
+  - Detect race conditions (value mismatches, missing keys, version drift)
+  - Save results to `results/performance_results.json` including consistency reports
 
 **`tests/test_single_quorum.py`** - Single quorum tester:
 
 - Usage: `python tests/test_single_quorum.py <quorum_value>`
 - Tests one specific quorum value
 - Saves per-quorum results to `results/results_quorum_<N>.json`
-- Checks for race conditions and consistency issues
+- Performs comprehensive data consistency checks:
+  - Checksum comparison between leader and all followers
+  - Race condition detection (value mismatches, missing keys, extra keys)
+  - Version consistency verification
 
 **`scripts/plot_results.py`** - Plot generator:
 
@@ -282,8 +276,17 @@ Measure how write latency varies with `WRITE_QUORUM` (1-5). Quantify the trade-o
   "success_rate": 0.98,
   "total_time": 15.2,
   "num_successful": 98,
-  "consistency": {...},
-  "race_condition_check": {...}
+  "consistency": {
+    "all_consistent": true,
+    "leader_keys": 10,
+    "follower_keys": {"8001": 10, "8002": 10, ...}
+  },
+  "race_condition_check": {
+    "race_conditions_detected": 0,
+    "all_consistent": true,
+    "race_condition_details": [],
+    "version_mismatches": []
+  }
 }
 ```
 
@@ -309,23 +312,169 @@ Measure how write latency varies with `WRITE_QUORUM` (1-5). Quantify the trade-o
 
 **Plot characteristics:**
 
-- Monotonically increasing curve (latency vs quorum)
+- Monotonically (usually) increasing curve (latency vs quorum)
 - May show non-linear growth due to queuing effects
-- Variance increases with quorum (wider range of latencies at higher quorums)
+
+![Result](results/img.png)
+![Result](result.png)
+
+Results during another runs:
+![Result](result_iterations/1.png)
+![Result](result_iterations/2.png)
+![Result](result_iterations/3.png)
+![Result](result_iterations/4.png)
+![Result](result_iterations/5.png)
 
 ---
 
-## 7. Data Consistency Check After Writes
+## 7. Data Consistency Verification
 
-### 7.1 What to check
+### 7.1 Consistency Checking Mechanisms
 
-- After all writes completed, verify that every follower's stored `(key -> (value, version))` equals the leader's final store for all keys.
+The system implements multiple layers of data consistency verification to ensure all replicas remain synchronized and detect any data corruption or race conditions.
 
-### 7.2 Possible outcomes and explanations
+#### 7.1.1 Checksum-Based Verification
 
-1. **All replicas match leader:** If leader waited for `WRITE_QUORUM` successes but the replication tasks still completed for remaining followers (even if after the leader responded), final convergence can still occur. With eventual delivery and no failures, replicas converge.
-2. **Some replicas lag behind:** If leader returns success after quorum but some followers were slow or unreachable and did not apply the update, they'll be missing that write until retry/repair. This is expected behavior with semi-sync replication and smaller quorum.
-3. **Conflict/ordering issues:** If leader restarts or network partitions occur, versions or ordering must be used to ensure last-write-wins (or stronger consistency if implemented). Using monotonic `version` avoids reordering.
+**Implementation:**
+
+- Each node (leader and followers) computes a SHA-256 checksum of its store contents
+- Checksum is computed from sorted key-value pairs (JSON-serialized) to ensure deterministic results
+- Checksums are exposed via `/diagnostics` and `/store` endpoints
+
+**Verification Process:**
+
+1. Leader computes checksum after each write operation
+2. Followers compute checksum after each replication
+3. Consistency checks compare leader checksum with each follower checksum
+4. Mismatch indicates data inconsistency between replicas
+
+**Usage in Tests:**
+
+- Integration tests verify checksums match after writes
+- Performance benchmarks include checksum verification after each quorum test
+- Results include `consistency` field indicating whether all checksums match
+
+#### 7.1.2 Race Condition Detection
+
+**Implementation:**
+The system performs comprehensive race condition detection by comparing full store contents across all nodes:
+
+1. **Value Mismatch Detection:**
+
+   - Compares each key-value pair between leader and followers
+   - Detects lost updates (same key with different final values)
+   - Identifies which follower has inconsistent data
+
+2. **Missing Key Detection:**
+
+   - Checks if all keys present in leader store exist in follower stores
+   - Detects replication failures or incomplete updates
+
+3. **Extra Key Detection:**
+
+   - Checks if followers have keys not present in leader store
+   - Detects potential data corruption or unauthorized writes
+
+4. **Version Consistency Check:**
+   - Compares version counters between leader and followers
+   - Allows small drift (±1) to account for in-flight replications
+   - Large version gaps indicate replication lag or failures
+
+**Race Condition Check Results:**
+
+```json
+{
+  "race_conditions_detected": 0,
+  "all_consistent": true,
+  "race_condition_details": [],
+  "version_mismatches": [],
+  "leader_key_count": 10,
+  "follower_key_counts": {"8001": 10, "8002": 10, ...}
+}
+```
+
+#### 7.1.3 Full Store Comparison
+
+**Implementation:**
+
+- Retrieves complete store contents from leader and all followers via `/store` endpoint
+- Performs key-by-key and value-by-value comparison
+- More thorough than checksum-only verification (identifies specific inconsistencies)
+
+**When Used:**
+
+- Final consistency verification in integration tests
+- Post-benchmark consistency checks in performance analysis
+- Detailed race condition detection
+
+### 7.2 Consistency Verification in Tests
+
+#### Integration Tests (`tests/test_integration.py`)
+
+**Checksum Verification:**
+
+- `test_diagnostics_checksums_match`: Verifies all follower checksums match leader checksum
+- `test_multiple_writes_consistency`: Performs checksum comparison after multiple writes
+- `test_stores_match_after_writes`: Full store comparison to verify complete consistency
+
+**Expected Behavior:**
+
+- All checksums should match after writes complete
+- All followers should have identical key-value pairs as leader
+- Version counters should be consistent (within ±1 for in-flight replications)
+
+#### Performance Benchmarks
+
+**Automatic Consistency Checks:**
+
+- After each quorum test, the benchmark performs:
+  1. Checksum verification via `/diagnostics` endpoint
+  2. Full race condition detection via store comparison
+  3. Version consistency verification
+
+**Results Include:**
+
+- `consistency` field: Checksum match status for each follower
+- `race_condition_check` field: Detailed race condition analysis
+- Both fields included in JSON results for each quorum value
+
+### 7.3 Consistency Guarantees
+
+**Semi-Synchronous Replication:**
+
+- Leader waits for `WRITE_QUORUM` confirmations before acknowledging success
+- Remaining replications complete in background (eventual consistency)
+- With `WRITE_QUORUM=5`, all followers are guaranteed to receive updates before client acknowledgment
+
+**Consistency Levels:**
+
+- **Strong Consistency (WRITE_QUORUM=5)**: All replicas updated before acknowledgment
+- **Eventual Consistency (WRITE_QUORUM<5)**: Some replicas may lag, but all eventually converge
+- **Consistency Checks**: Verify eventual convergence has occurred
+
+### 7.4 Interpreting Consistency Results
+
+**All Consistent (`all_consistent: true`):**
+
+- All checksums match
+- No race conditions detected
+- Version counters aligned
+- System is in consistent state
+
+**Inconsistencies Detected:**
+
+- Checksum mismatches indicate data divergence
+- Race conditions indicate lost updates or ordering issues
+- Version mismatches indicate replication lag
+- Investigation needed to identify root cause
+
+**Common Causes of Inconsistencies:**
+
+1. Network failures during replication
+2. Follower failures
+3. Race conditions in concurrent writes
+4. Incomplete background replications
+5. System load causing replication delays
 
 ---
 
@@ -405,16 +554,3 @@ docker-compose down -v
 # View logs before cleanup
 docker-compose logs
 ```
-
-### Environment Variable Defaults
-
-| Variable           | Default   | Range       | Notes                     |
-| ------------------ | --------- | ----------- | ------------------------- | --- |
-| `WRITE_QUORUM`     | 3         | 1-5         | Can be changed at runtime |
-| `MIN_DELAY`        | 0.05      | >= 0        | Seconds                   |
-| `MAX_DELAY`        | 0.5       | > MIN_DELAY | Seconds                   |
-| `FOLLOWER_TIMEOUT` | 2.5       | > 0         | Seconds; total wait time  |
-| `PORT` (leader)    | 8000      | 1024-65535  | HTTP server port          |
-| `PORT` (followers) | 8001-8005 | 1024-65535  | One per follower          | `   |
-
----
