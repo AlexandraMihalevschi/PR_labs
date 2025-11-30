@@ -24,6 +24,12 @@ FOLLOWER_URLS = [
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
+# Warm-up parameters to eliminate cold-start latency skew
+WARMUP_WRITES = 25
+WARMUP_KEYS = 5
+WARMUP_CONCURRENCY = 5
+WARMUP_SETTLE_SECONDS = 0.5
+
 
 async def wait_for_services(max_retries: int = 60, delay: float = 0.5) -> None:
     """Wait for all services to be ready, with better error reporting."""
@@ -94,6 +100,25 @@ async def configure_write_quorum(quorum: int) -> None:
         except Exception as e:
             print(f"Warning: Failed to configure quorum via API: {e}")
             print("Continuing with default quorum from environment...")
+
+
+async def warm_up_cluster(quorum: int) -> None:
+    """
+    Send a short burst of writes after changing the quorum so that the real
+    measurement does not include HTTP connection handshakes or backlog drains.
+    This ensures steady-state latency measurements.
+    """
+    print(f"Warming up for WRITE_QUORUM={quorum} ...")
+    latencies = await run_concurrent_writes(
+        num_writes=WARMUP_WRITES,
+        num_keys=WARMUP_KEYS,
+        concurrency=WARMUP_CONCURRENCY,
+    )
+    if latencies:
+        warmup_avg_ms = (sum(latencies) / len(latencies)) * 1000
+        print(f"  Warm-up avg latency: {warmup_avg_ms:.1f} ms (ignored)")
+    # Give the slowest replication tasks time to finish
+    await asyncio.sleep(WARMUP_SETTLE_SECONDS)
 
 
 async def write_key(client: httpx.AsyncClient, key: str, value: str) -> Tuple[bool, float]:
@@ -223,6 +248,10 @@ async def main():
 
     await wait_for_services()
     await configure_write_quorum(quorum)
+
+    # Warm up to ensure steady-state conditions
+    await warm_up_cluster(quorum)
+    await asyncio.sleep(0.1)  # Additional settle period
 
     print("Running concurrent writes...")
     start_time = time.perf_counter()

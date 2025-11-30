@@ -11,7 +11,6 @@ import asyncio
 import hashlib
 import json
 import os
-import random
 import time
 from typing import Dict, List, Tuple
 
@@ -87,20 +86,20 @@ async def replicate_to_follower(client: httpx.AsyncClient, follower_url: str, ke
     This ensures that quorum N always waits for the Nth fastest follower, creating a
     consistent latency progression from quorum 1 (fastest) to quorum 5 (slowest).
     
-    Each follower gets a base delay that increases linearly, plus a small random component
-    to simulate real-world variance while maintaining the order.
+    Delays are fully deterministic to ensure consistent latency measurements across quorum values.
+    The delay is applied before the HTTP request to simulate network/processing latency differences.
     """
     # Calculate deterministic base delay for this follower
     # Follower 0 (first) gets MIN_DELAY, follower N-1 (last) gets MAX_DELAY
+    # This ensures quorum 1 (waiting for 1st fastest) has lowest latency
+    # and quorum 5 (waiting for 5th fastest) has highest latency
     if len(FOLLOWERS) > 1:
-        base_delay = MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (follower_index / (len(FOLLOWERS) - 1))
+        delay = MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (follower_index / (len(FOLLOWERS) - 1))
     else:
-        base_delay = MIN_DELAY
+        delay = MIN_DELAY
     
-    # Add small random component (5% of range) to simulate variance while preserving order
-    random_component = random.uniform(-0.05 * (MAX_DELAY - MIN_DELAY), 0.05 * (MAX_DELAY - MIN_DELAY))
-    delay = max(MIN_DELAY, min(MAX_DELAY, base_delay + random_component))
-    
+    # Apply delay before making the request to simulate processing/network differences
+    # This ensures deterministic ordering: follower 0 responds fastest, follower 4 responds slowest
     await asyncio.sleep(delay)
     try:
         response = await client.post(

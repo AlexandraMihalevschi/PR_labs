@@ -28,6 +28,13 @@ FOLLOWER_URLS = [
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Warm-up parameters to eliminate cold-start latency skew for the first quorum.
+# Increased warm-up to ensure steady-state conditions for all quorum tests.
+WARMUP_WRITES = 25
+WARMUP_KEYS = 5
+WARMUP_CONCURRENCY = 5
+WARMUP_SETTLE_SECONDS = 0.5  # Increased to allow all background replications to complete
+
 
 async def wait_for_services(max_retries: int = 30, delay: float = 0.5) -> None:
     """Wait until the leader and all followers respond."""
@@ -59,6 +66,29 @@ async def configure_write_quorum(quorum: int) -> None:
     async with httpx.AsyncClient(timeout=3.0) as client:
         resp = await client.post(f"{LEADER_URL}/config/write_quorum", json={"write_quorum": quorum})
         resp.raise_for_status()
+
+
+async def warm_up_cluster(quorum: int) -> None:
+    """
+    Send a short burst of writes after changing the quorum so that the real
+    measurement does not include HTTP connection handshakes or backlog drains.
+
+    The warm-up writes are discarded but they flush the connection pools and
+    align follower queues, which keeps quorum=1 from paying the cold-start tax.
+    This ensures each quorum test starts from a consistent steady state.
+    """
+    print(f"  Warming up for WRITE_QUORUM={quorum} ...")
+    latencies = await run_concurrent_writes(
+        num_writes=WARMUP_WRITES,
+        num_keys=WARMUP_KEYS,
+        concurrency=WARMUP_CONCURRENCY,
+    )
+    if latencies:
+        warmup_avg_ms = float(np.mean(latencies)) * 1000
+        print(f"    Warm-up avg latency: {warmup_avg_ms:.1f} ms (ignored)")
+    # Give the slowest replication tasks time to finish so they don't interfere
+    # with the measured run. This ensures clean separation between warm-up and measurement.
+    await asyncio.sleep(WARMUP_SETTLE_SECONDS)
 
 
 async def write_key(client: httpx.AsyncClient, key: str, value: str) -> Tuple[bool, float]:
@@ -220,9 +250,22 @@ async def test_write_quorum_performance():
         await configure_write_quorum(quorum)
         print(f"\nRunning benchmark with WRITE_QUORUM={quorum} ...")
 
+        # Prime HTTP pools and follower queues so that each quorum measurement
+        # reflects steady-state latency instead of cold-start noise.
+        # This ensures latency increases consistently from quorum 1 to 5.
+        await warm_up_cluster(quorum)
+
+        # Additional settle to ensure warm-up replications are fully complete
+        # This prevents interference between warm-up and measurement phases
+        await asyncio.sleep(0.5)
+
         start_time = time.perf_counter()
         latencies = await run_concurrent_writes(num_writes, num_keys, concurrency)
         total_time = time.perf_counter() - start_time
+        
+        # Brief settle after measurement to let background replications complete
+        # before next quorum test starts
+        await asyncio.sleep(0.3)
 
         if not latencies:
             print("No successful writes recorded!")

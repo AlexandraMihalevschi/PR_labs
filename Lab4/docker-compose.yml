@@ -16,8 +16,8 @@ services:
       PORT: 8000
       FOLLOWERS: "http://follower1:8001,http://follower2:8002,http://follower3:8003,http://follower4:8004,http://follower5:8005"
       WRITE_QUORUM: "${WRITE_QUORUM:-3}"
-      MIN_DELAY: "${MIN_DELAY:-0.01}"
-      MAX_DELAY: "${MAX_DELAY:-0.1}"
+      MIN_DELAY: "${MIN_DELAY:-0.05}"
+      MAX_DELAY: "${MAX_DELAY:-0.25}"
       FOLLOWER_TIMEOUT: "${FOLLOWER_TIMEOUT:-5.0}"
     depends_on:
       - follower1

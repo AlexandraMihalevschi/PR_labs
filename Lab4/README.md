@@ -188,7 +188,17 @@ services:
   - `GET /store` - return full store + checksum
   - `GET /diagnostics` - expose status signals
 
-![Result](results/write_quorum_vs_latency.png)
+![Result](results/img.png)
+![Result](result.png)
+
+Results during another runs:
+![Result](result_iterations/1.png)
+![Result](result_iterations/2.png)
+![Result](result_iterations/3.png)
+![Result](result_iterations/4.png)
+![Result](result_iterations/5.png)
+
+
 
 ---
 
